@@ -1,0 +1,156 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+@import 'tailwindcss';
+
+html, body, #root {
+  height: 100%;
+  background: #060809;
+  overflow: hidden;
+}
+
+* { box-sizing: border-box; }
+
+::-webkit-scrollbar { width: 2px; height: 2px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(200,170,60,0.2); border-radius: 1px; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  color: #a8b8b0;
+}
+
+.font-orb { font-family: 'Orbitron', sans-serif; }
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+
+/* Tactical grid background */
+.tac-grid {
+  background-image:
+    linear-gradient(rgba(200,170,60,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200,170,60,0.025) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Panels */
+.panel {
+  background: linear-gradient(160deg, #0c1014f0, #080b0ef0);
+  border: 1px solid rgba(200,170,60,0.15);
+  position: relative;
+}
+.panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(200,170,60,0.02) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* Corner marks */
+.mark-tl::before { content:''; position:absolute; top:0; left:0; width:10px; height:1px; background:rgba(200,170,60,0.6); }
+.mark-tl::after  { content:''; position:absolute; top:0; left:0; width:1px; height:10px; background:rgba(200,170,60,0.6); }
+
+/* Amber glow text */
+.txt-amber { color: #d4a820; }
+.txt-green  { color: #4aaa6a; }
+.txt-red    { color: #cc4444; }
+.txt-dim    { color: #4a5a54; }
+.txt-main   { color: #a8b8b0; }
+
+.glow-amber { text-shadow: 0 0 8px rgba(212,168,32,0.5); }
+.glow-green { text-shadow: 0 0 8px rgba(74,170,106,0.5); }
+
+/* Radar scope */
+.radar-scope {
+  background: radial-gradient(ellipse at center,
+    rgba(30,60,40,0.25) 0%,
+    rgba(10,20,15,0.4) 40%,
+    rgba(6,8,9,0.6) 70%,
+    #060809 100%
+  );
+}
+
+/* Animations */
+@keyframes sweep {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes blip-pulse {
+  0%,100% { opacity:1; r:3px; }
+  50%      { opacity:0.3; r:5px; }
+}
+@keyframes ring-fade {
+  0%   { opacity:0.7; transform:scale(1); }
+  100% { opacity:0; transform:scale(3); }
+}
+@keyframes blink {
+  0%,100% { opacity:1; }
+  50%      { opacity:0.25; }
+}
+@keyframes scroll-up {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-50%); }
+}
+@keyframes fade-in {
+  from { opacity:0; transform:translateY(4px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+@keyframes bar-wave {
+  0%,100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(1); }
+}
+@keyframes classified-flicker {
+  0%,100% { opacity:1; }
+  91%      { opacity:1; }
+  92%      { opacity:0.4; }
+  93%      { opacity:1; }
+}
+
+@keyframes bar-wave {
+  0%,100% { transform: scaleY(0.35); }
+  50%      { transform: scaleY(1); }
+}
+
+.anim-sweep     { animation: sweep 4s linear infinite; }
+.anim-blink     { animation: blink 1.4s ease-in-out infinite; }
+.anim-fade-in   { animation: fade-in 0.4s ease-out forwards; }
+.anim-flicker   { animation: classified-flicker 6s ease-in-out infinite; }
+
+/* Input */
+.tac-input {
+  background: rgba(200,170,60,0.04);
+  border: 1px solid rgba(200,170,60,0.2);
+  color: #d4a820;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.tac-input:focus {
+  border-color: rgba(200,170,60,0.5);
+  box-shadow: 0 0 0 1px rgba(200,170,60,0.1);
+}
+.tac-input::placeholder { color: rgba(200,170,60,0.25); }
+
+/* Clearance badge */
+.clearance-ts {
+  background: rgba(204,68,68,0.15);
+  border: 1px solid rgba(204,68,68,0.4);
+  color: #cc4444;
+}
+.clearance-s {
+  background: rgba(212,168,32,0.1);
+  border: 1px solid rgba(212,168,32,0.35);
+  color: #d4a820;
+}
+
+/* Tab active */
+.tab-active {
+  color: #d4a820;
+  border-bottom: 1px solid #d4a820;
+  background: rgba(200,170,60,0.06);
+}
+.tab-inactive {
+  color: #4a5a54;
+  border-bottom: 1px solid transparent;
+}
+.tab-inactive:hover { color: #7a8a80; }
