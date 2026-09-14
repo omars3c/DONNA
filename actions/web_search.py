@@ -91,11 +91,11 @@ def _gemini_search(query: str) -> str:
     last_err = None
     for model_name in GEMINI_MODELS:
         try:
-            response = client.models.generate_content(
+            chat = client.chats.create(
                 model=model_name,
-                contents=query,
                 config={"tools": [{"google_search": {}}]},
             )
+            response = chat.send_message(query)
 
             text = ""
             if response.candidates and len(response.candidates) > 0:
@@ -374,10 +374,12 @@ def _gemini_headlines(n: int = 5) -> tuple[list[str], str]:
                 client = genai.Client(api_key=key)
                 for m in GEMINI_MODELS:
                     try:
-                        response = client.models.generate_content(
+                        chat = client.chats.create(
                             model=m,
-                            contents=f"Current world and local news: {n} headlines in Russian. Numbered list, titles only.",
                             config={"tools": [{"google_search": {}}]},
+                        )
+                        response = chat.send_message(
+                            f"Current world and local news: {n} headlines in Russian. Numbered list, titles only."
                         )
                         raw = ""
                         if response.candidates:

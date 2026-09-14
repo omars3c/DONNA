@@ -133,7 +133,7 @@
 ---
 
 ### 👁️ 6. Компьютерное зрение и анализ экрана
-Файл: [`actions/screen_processor.py`](file:///c:/fryday%20v1/wassupbeijing/actions/screen_processor.py)
+Файлы: `actions/screen_capture.py`, `actions/vision_session.py`
 * **Анализ экрана (`screen_process`)**:
   * Снятие скриншота, распознавание открытых окон, текста, графиков, кода и поиск ошибок.
 * **Поддержка веб-камеры**:
@@ -193,7 +193,9 @@ c:/fryday v1/wassupbeijing/
 │   ├── computer_settings.py     # Системные настройки (громкость, яркость, процессы, hotkeys)
 │   ├── open_app.py              # Интеллектуальный запуск приложений с поддержкой русских имен
 │   ├── web_search.py            # Поиск в вебе (новости, аналитика, цены) с DDG фоллбэком
-│   ├── screen_processor.py      # Компьютерное зрение и анализ экрана / веб-камеры
+│   ├── screen_capture.py        # Захват кадров экрана и веб-камеры
+│   ├── vision_session.py        # Компьютерное зрение и live-сессия экрана / веб-камеры
+│   ├── screen_processor.py      # Фасад совместимости (screen_capture + vision_session)
 │   ├── background_monitor.py    # Фоновый мониторинг новостей и тем с сохранением контекста
 │   ├── system_monitor.py        # Мониторинг аппаратных датчиков и предупреждения
 │   ├── proactive.py             # Проактивные подсказки и чекины

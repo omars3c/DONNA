@@ -1,0 +1,11 @@
+{
+  "include": [
+    "."
+  ],
+  "pythonPath": "C:/Users/Minerva/AppData/Local/Programs/Python/Python313/python.exe",
+  "extraPaths": [
+    "C:/Users/Minerva/AppData/Local/Programs/Python/Python313/Lib/site-packages",
+    "."
+  ],
+  "reportMissingImports": "warning"
+}

@@ -869,7 +869,7 @@ class RemoteKeyOverlay(QWidget):
             qr.make(fit=True)
             img = qr.make_image(fill_color="black", back_color="white")
             buf = BytesIO()
-            img.save(buf, format="PNG")
+            img.save(buf)
             px = QPixmap()
             px.loadFromData(buf.getvalue())
             self._qr_label.setPixmap(px.scaled(150, 150, Qt.AspectRatioMode.KeepAspectRatio))
@@ -2177,8 +2177,76 @@ class JarvisUI:
         return self
 
 
+def _connect_microservices(win: MainWindow):
+    """
+    Connects Tactical HUD UI to D.O.N.N.A. Microservices:
+    - Receives state, real-time dialogue logs, and content from ws://127.0.0.1:8001/ws/hud
+    - Dispatches commands to http://127.0.0.1:8001/v1/command
+    - Dispatches interrupts to http://127.0.0.1:8001/v1/interrupt
+    """
+    import asyncio
+    import json
+    import httpx
+    import websockets
+
+    async def _hud_listener():
+        uri = "ws://127.0.0.1:8001/ws/hud"
+        while True:
+            try:
+                async with websockets.connect(uri) as ws:
+                    win._log_sig.emit("SYS: ◈ Connected to D.O.N.N.A. Brain Orchestrator.")
+                    async for raw in ws:
+                        try:
+                            msg = json.loads(raw)
+                            mtype = msg.get("type")
+                            if mtype == "state":
+                                win._state_sig.emit(msg.get("state", "STANDBY"))
+                            elif mtype == "log":
+                                speaker = msg.get("speaker", "sys")
+                                text = msg.get("text", "")
+                                if speaker == "user":
+                                    win._log_sig.emit(f"You: {text}")
+                                elif speaker in ("jarvis", "donna"):
+                                    win._log_sig.emit(f"{win._assistant_name}: {text}")
+                                else:
+                                    win._log_sig.emit(f"SYS: {text}")
+                            elif mtype == "content":
+                                win._content_sig.emit(msg.get("title", "CONTENT"), msg.get("text", ""))
+                        except Exception:
+                            pass
+            except Exception:
+                await asyncio.sleep(2.0)
+
+    def _send_command_sync(text: str):
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.post("http://127.0.0.1:8001/v1/command", json={"text": text})
+                if resp.status_code != 200:
+                    win._log_sig.emit(f"SYS: Command error ({resp.status_code}): {resp.text}")
+        except Exception as e:
+            win._log_sig.emit(f"ERR: Brain unreachable: {e}")
+
+    def _send_interrupt_sync():
+        try:
+            with httpx.Client(timeout=3.0) as client:
+                client.post("http://127.0.0.1:8001/v1/interrupt")
+        except Exception:
+            pass
+
+    win.on_text_command = _send_command_sync
+    win.on_interrupt = _send_interrupt_sync
+
+    def _worker():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(_hud_listener())
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     ui = MainWindow()
+    _connect_microservices(ui)
     ui.show()
     sys.exit(app.exec())

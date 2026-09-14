@@ -1,0 +1,38 @@
+"""
+Configuration settings and service endpoints for DONNA Microservices.
+"""
+
+import os
+from pathlib import Path
+
+# Base Paths
+BASE_DIR = Path(__file__).resolve().parent.parent
+CONFIG_DIR = BASE_DIR / "config"
+API_KEYS_PATH = CONFIG_DIR / "api_keys.json"
+
+# Service Ports & Hosts
+BRAIN_HOST = os.getenv("DONNA_BRAIN_HOST", "127.0.0.1")
+BRAIN_PORT = int(os.getenv("DONNA_BRAIN_PORT", "8001"))
+
+CORTEX_HOST = os.getenv("DONNA_CORTEX_HOST", "127.0.0.1")
+CORTEX_PORT = int(os.getenv("DONNA_CORTEX_PORT", "8002"))
+
+RESEARCH_HOST = os.getenv("DONNA_RESEARCH_HOST", "127.0.0.1")
+RESEARCH_PORT = int(os.getenv("DONNA_RESEARCH_PORT", "8003"))
+
+HOST_AGENT_HOST = os.getenv("DONNA_HOST_AGENT_HOST", "127.0.0.1")
+HOST_AGENT_PORT = int(os.getenv("DONNA_HOST_AGENT_PORT", "8004"))
+
+AUDIO_HOST = os.getenv("DONNA_AUDIO_HOST", "127.0.0.1")
+AUDIO_PORT = int(os.getenv("DONNA_AUDIO_PORT", "8005"))
+
+CHANNEL_GATEWAY_HOST = os.getenv("DONNA_CHANNEL_HOST", "127.0.0.1")
+CHANNEL_GATEWAY_PORT = int(os.getenv("DONNA_CHANNEL_PORT", "8000"))
+
+# Service URLs
+BRAIN_SERVICE_URL = f"http://{BRAIN_HOST}:{BRAIN_PORT}"
+CORTEX_SERVICE_URL = f"http://{CORTEX_HOST}:{CORTEX_PORT}"
+RESEARCH_SERVICE_URL = f"http://{RESEARCH_HOST}:{RESEARCH_PORT}"
+HOST_AGENT_SERVICE_URL = f"http://{HOST_AGENT_HOST}:{HOST_AGENT_PORT}"
+AUDIO_SERVICE_URL = f"http://{AUDIO_HOST}:{AUDIO_PORT}"
+CHANNEL_GATEWAY_SERVICE_URL = f"http://{CHANNEL_GATEWAY_HOST}:{CHANNEL_GATEWAY_PORT}"
