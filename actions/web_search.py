@@ -99,9 +99,11 @@ def _gemini_search(query: str) -> str:
 
             text = ""
             if response.candidates and len(response.candidates) > 0:
-                for part in response.candidates[0].content.parts:
-                    if hasattr(part, "text") and part.text:
-                        text += part.text
+                first_cand = response.candidates[0]
+                if first_cand.content and first_cand.content.parts:
+                    for part in first_cand.content.parts:
+                        if hasattr(part, "text") and part.text:
+                            text += part.text
 
             text = text.strip()
             if text:
@@ -162,9 +164,14 @@ def _wikipedia_search(query: str) -> Optional[dict]:
 def _ddg_library_search(query: str, max_results: int = 6) -> list[dict]:
     try:
         try:
-            from ddgs import DDGS
-        except ImportError:
             from duckduckgo_search import DDGS
+        except ImportError:
+            try:
+                from ddgs import DDGS  # type: ignore
+            except ImportError:
+                DDGS = None
+        if DDGS is None:
+            return []
 
         results = []
         is_cyrillic = bool(re.search(r"[а-яА-ЯёЁ]", query))
@@ -200,7 +207,8 @@ def _ddg_lite_search(query: str, max_results: int = 6) -> list[dict]:
                 link_el = tr.select_one("a.result-link")
                 if link_el:
                     title = link_el.get_text(strip=True)
-                    url_link = link_el.get("href", "")
+                    href_val = link_el.get("href", "")
+                    url_link = str(href_val) if href_val else ""
                     if "duckduckgo.com/l/?uddg=" in url_link:
                         parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url_link).query)
                         if "uddg" in parsed:
@@ -234,7 +242,8 @@ def _ddg_html_search(query: str, max_results: int = 6) -> list[dict]:
                 snippet_el = el.select_one(".result__snippet")
                 if title_el and snippet_el:
                     title = title_el.get_text(strip=True)
-                    url_link = title_el.get("href", "")
+                    href_val = title_el.get("href", "")
+                    url_link = str(href_val) if href_val else ""
                     if "duckduckgo.com/l/?uddg=" in url_link:
                         parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url_link).query)
                         if "uddg" in parsed:
@@ -273,9 +282,15 @@ def _ddg_news(query: str, max_results: int = 8) -> list[dict]:
     if not results:
         try:
             try:
-                from ddgs import DDGS
-            except ImportError:
                 from duckduckgo_search import DDGS
+            except ImportError:
+                try:
+                    from ddgs import DDGS  # type: ignore
+                except ImportError:
+                    DDGS = None
+
+            if DDGS is None:
+                return results
 
             region = "ru-ru" if is_cyrillic else "wt-wt"
             with DDGS() as ddgs:
@@ -382,10 +397,12 @@ def _gemini_headlines(n: int = 5) -> tuple[list[str], str]:
                             f"Current world and local news: {n} headlines in Russian. Numbered list, titles only."
                         )
                         raw = ""
-                        if response.candidates:
-                            for part in response.candidates[0].content.parts:
-                                if hasattr(part, "text") and part.text:
-                                    raw += part.text
+                        if response.candidates and len(response.candidates) > 0:
+                            first_cand = response.candidates[0]
+                            if first_cand.content and first_cand.content.parts:
+                                for part in first_cand.content.parts:
+                                    if hasattr(part, "text") and part.text:
+                                        raw += part.text
                         raw = raw.strip()
                         if raw:
                             headlines = []

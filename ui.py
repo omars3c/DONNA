@@ -13,8 +13,9 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Optional
 
-import psutil
+import psutil  # type: ignore
 
 if platform.system() == "Windows":
     _WIN_HIDE: dict = {"creationflags": subprocess.CREATE_NO_WINDOW}
@@ -134,8 +135,8 @@ def qcol(hex_or_rgba: str, alpha: int | None = None) -> QColor:
 
 # ── GPU & System Telemetry ─────────────────────────────────────────────────────
 
-_nvml_lib = None
-_nvml_ok  = None
+_nvml_lib: Any = None
+_nvml_ok: Optional[bool] = None
 
 class _Util(ctypes.Structure):
     _fields_ = [("gpu", ctypes.c_uint), ("memory", ctypes.c_uint)]
@@ -239,6 +240,7 @@ class FridaySphereCanvas(QWidget):
         self._tick      = 0
         self._ripples   = []
         self._hover_pos = None
+        self.on_clicked = None
 
         # ── Glitch effect state ─────────────────────────────────────────────
         self._next_glitch = time.time() + random.uniform(3.0, 6.0)
@@ -287,16 +289,16 @@ class FridaySphereCanvas(QWidget):
         self._ripples = [r for r in self._ripples if (now - r[2]) < 1.4]
         self.update()
 
-    def mouseMoveEvent(self, e):
-        self._hover_pos = (e.position().x(), e.position().y())
+    def mouseMoveEvent(self, a0):
+        self._hover_pos = (a0.position().x(), a0.position().y())
         self.update()
 
-    def leaveEvent(self, e):
+    def leaveEvent(self, a0):
         self._hover_pos = None
         self.update()
 
-    def mousePressEvent(self, e):
-        self._ripples.append([e.position().x(), e.position().y(), time.time()])
+    def mousePressEvent(self, a0):
+        self._ripples.append([a0.position().x(), a0.position().y(), time.time()])
         self.update()
         if hasattr(self, "on_clicked") and callable(self.on_clicked):
             try:
@@ -304,7 +306,7 @@ class FridaySphereCanvas(QWidget):
             except Exception:
                 pass
 
-    def paintEvent(self, e):
+    def paintEvent(self, a0):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
@@ -334,8 +336,8 @@ class FridaySphereCanvas(QWidget):
         # Scanlines (very light 5% opacity horizontal cyber scanlines)
         scan_offset = int(self._tick * 0.4) % 6
         p.setPen(QPen(QColor(0, 229, 255, 12), 1))
-        for y in range(scan_offset, int(H), 6):
-            p.drawLine(0, y, int(W), y)
+        for y in range(scan_offset, H, 6):
+            p.drawLine(0, y, W, y)
 
         # Corner Decor
         self._draw_tactical_decor(p, W, H)
@@ -422,7 +424,7 @@ class FridaySphereCanvas(QWidget):
             p.translate(cx, cy)
             p.rotate(math.degrees(ang))
             p.scale(1.0, max(0.1, math.sin(math.radians(r["tilt"]))))
-            p.setPen(QPen(qcol(glow_col.name(), r["alpha"]), r["lw"]))
+            p.setPen(QPen(qcol(glow_col.name(), int(r["alpha"])), r["lw"]))
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawEllipse(QPointF(0, 0), R * 0.98, R * 0.98)
             p.restore()
@@ -444,7 +446,7 @@ class FridaySphereCanvas(QWidget):
             age = (now_ts - r_start) / 1.4
             if age > 1.0: continue
             max_r = R * 1.8
-            alpha = int(max(0, (1.0 - age) * 160))
+            alpha = max(0, int((1.0 - age) * 160))
             for ring_idx in range(3):
                 cur_r = max_r * max(0, age - ring_idx * 0.15)
                 if cur_r > 0:
@@ -630,7 +632,7 @@ class CyberChamferPanel(QWidget):
         self.border_col = border_col or C.BORDER
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
 
-    def paintEvent(self, e):
+    def paintEvent(self, a0):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = float(self.width()), float(self.height())
@@ -691,7 +693,7 @@ class _GlobalScanlineOverlay(QWidget):
         self._offset = (self._offset + 1) % 5
         self.update()
 
-    def paintEvent(self, e):
+    def paintEvent(self, a0):
         p = QPainter(self)
         W, H = self.width(), self.height()
         p.setPen(QPen(QColor(0, 229, 255, 11), 1))
@@ -754,7 +756,7 @@ class TacticalSpectrogram(QWidget):
         self._tick += 1
         self.update()
 
-    def paintEvent(self, e):
+    def paintEvent(self, a0):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
@@ -862,7 +864,7 @@ class RemoteKeyOverlay(QWidget):
     def _update_qr(self, url: str):
         if not url: return
         try:
-            import qrcode
+            import qrcode  # type: ignore
             from io import BytesIO
             qr = qrcode.QRCode(box_size=4, border=1)
             qr.add_data(url)
@@ -1079,7 +1081,7 @@ class MiniHudPanel(QWidget):
                 pass
         self.update()
 
-    def paintEvent(self, e):
+    def paintEvent(self, a0):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
@@ -1289,16 +1291,16 @@ class ErrorTrackerPanel(QWidget):
         # Drag support
         self._drag_pos = None
 
-    def mousePressEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton and e.position().y() < 30:
-            self._drag_pos = e.position().toPoint()
+    def mousePressEvent(self, a0):
+        if a0.button() == Qt.MouseButton.LeftButton and a0.position().y() < 30:
+            self._drag_pos = a0.position().toPoint()
 
-    def mouseMoveEvent(self, e):
+    def mouseMoveEvent(self, a0):
         if self._drag_pos is not None:
-            delta = e.position().toPoint() - self._drag_pos
+            delta = a0.position().toPoint() - self._drag_pos
             self.move(self.pos() + delta)
 
-    def mouseReleaseEvent(self, e):
+    def mouseReleaseEvent(self, a0):
         self._drag_pos = None
 
     def add_error(self, severity: str, source: str, message: str, traceback_str: str = ""):
@@ -1344,7 +1346,8 @@ class ErrorTrackerPanel(QWidget):
 
         # Auto-scroll to bottom
         sb = self._log.verticalScrollBar()
-        sb.setValue(sb.maximum())
+        if sb:
+            sb.setValue(sb.maximum())
 
     def _clear_all(self):
         self._entries.clear()
@@ -1387,8 +1390,10 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(960, 600)
         self.setAcceptDrops(True)
 
-        screen = QApplication.primaryScreen().availableGeometry()
-        self.move((screen.width() - 1180) // 2, (screen.height() - 740) // 2)
+        screen = QApplication.primaryScreen()
+        if screen:
+            geom = screen.availableGeometry()
+            self.move((geom.width() - 1180) // 2, (geom.height() - 740) // 2)
 
         self.on_text_command   = None
         self.on_remote_clicked = None
@@ -1456,16 +1461,29 @@ class MainWindow(QMainWindow):
         self._metrics_tmr.start(1500)
 
         # Clipboard Monitor
-        QApplication.clipboard().dataChanged.connect(self._on_clipboard_changed)
+        cb = QApplication.clipboard()
+        if cb:
+            cb.dataChanged.connect(self._on_clipboard_changed)
 
         if not self._ready:
             QTimer.singleShot(300, self._show_setup)
 
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
+    def resizeEvent(self, a0):
+        super().resizeEvent(a0)
         if hasattr(self, "_scanlines") and self._scanlines:
             self._scanlines.setGeometry(self.rect())
             self._scanlines.raise_()
+        cw = self.centralWidget()
+        if cw:
+            if hasattr(self, "_remote_overlay") and self._remote_overlay and self._remote_overlay.isVisible():
+                ow, oh = RemoteKeyOverlay._OW, RemoteKeyOverlay._OH
+                self._remote_overlay.setGeometry((cw.width() - ow) // 2, (cw.height() - oh) // 2, ow, oh)
+            if hasattr(self, "_overlay") and self._overlay and self._overlay.isVisible():
+                ow, oh = SetupOverlay._OW, SetupOverlay._OH
+                self._overlay.setGeometry((cw.width() - ow) // 2, (cw.height() - oh) // 2, ow, oh)
+            if hasattr(self, "_customize_overlay") and self._customize_overlay and self._customize_overlay.isVisible():
+                ow, oh = CustomizeOverlay._OW, CustomizeOverlay._OH
+                self._customize_overlay.setGeometry((cw.width() - ow) // 2, (cw.height() - oh) // 2, ow, oh)
 
     # ── Header ────────────────────────────────────────────────────────────────
 
@@ -1714,7 +1732,7 @@ class MainWindow(QMainWindow):
     def _create_desktop_shortcut(self):
         try:
             if _OS == "Windows":
-                from win32com.client import Dispatch
+                from win32com.client import Dispatch  # type: ignore
                 desktop = Path(os.environ["USERPROFILE"]) / "Desktop"
                 lnk = str(desktop / "DONNA.lnk")
                 pythonw = Path(sys.executable).parent / "pythonw.exe"
@@ -2126,25 +2144,35 @@ class MainWindow(QMainWindow):
 
     # ── File Drag & Drop ──────────────────────────────────────────────────────
 
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
+    def dragEnterEvent(self, a0: QDragEnterEvent | None):
+        if a0 is None:
+            return
+        md = a0.mimeData()
+        if md and md.hasUrls():
+            a0.acceptProposedAction()
 
-    def dropEvent(self, event: QDropEvent):
-        urls = event.mimeData().urls()
-        if urls:
-            file_path = urls[0].toLocalFile()
-            if os.path.exists(file_path):
-                self._current_file = file_path
-                fname = Path(file_path).name
-                self._append_log(f"SYS: Attached file: {fname} ({file_path})")
-                self._show_content(f"FILE ATTACHED: {fname}", f"Path: {file_path}\nReady for tactical analysis.")
+    def dropEvent(self, a0: QDropEvent | None):
+        if a0 is None:
+            return
+        md = a0.mimeData()
+        if md and md.hasUrls():
+            urls = md.urls()
+            if urls:
+                file_path = urls[0].toLocalFile()
+                if os.path.exists(file_path):
+                    self._current_file = file_path
+                    fname = Path(file_path).name
+                    self._append_log(f"SYS: Attached file: {fname} ({file_path})")
+                    self._show_content(f"FILE ATTACHED: {fname}", f"Path: {file_path}\nReady for tactical analysis.")
 
     # ── Clipboard Intelligence ────────────────────────────────────────────────
 
     def _on_clipboard_changed(self):
         try:
-            txt = QApplication.clipboard().text().strip()
+            cb = QApplication.clipboard()
+            if not cb:
+                return
+            txt = cb.text().strip()
             if len(txt) > 8 and not txt.startswith("SYS:"):
                 # Preview in dialogue alert ticker
                 self._alert_lbl.setText(f"◈ Clipboard: {txt[:36]}...")
@@ -2159,7 +2187,7 @@ class MainWindow(QMainWindow):
         else:
             # Position near top-right of central widget
             cw = self.centralWidget()
-            x = cw.width() - 500
+            x = (cw.width() - 500) if cw else (self.width() - 500)
             self._error_tracker.setGeometry(max(x, 20), 50, 480, 320)
             self._error_tracker.show()
             self._error_tracker.raise_()
@@ -2240,10 +2268,12 @@ class MainWindow(QMainWindow):
             return False
 
     def _show_setup(self):
-        ov = SetupOverlay(self.centralWidget())
         cw = self.centralWidget()
+        ov = SetupOverlay(cw)
         ow, oh = SetupOverlay._OW, SetupOverlay._OH
-        ov.setGeometry((cw.width() - ow) // 2, (cw.height() - oh) // 2, ow, oh)
+        w = cw.width() if cw else self.width()
+        h = cw.height() if cw else self.height()
+        ov.setGeometry((w - ow) // 2, (h - oh) // 2, ow, oh)
         ov.done.connect(self._on_setup_done)
         ov.show()
         self._overlay = ov
@@ -2264,7 +2294,9 @@ class MainWindow(QMainWindow):
         cw = self.centralWidget()
         ov = CustomizeOverlay(parent=cw)
         ow, oh = CustomizeOverlay._OW, CustomizeOverlay._OH
-        ov.setGeometry((cw.width() - ow) // 2, (cw.height() - oh) // 2, ow, oh)
+        w = cw.width() if cw else self.width()
+        h = cw.height() if cw else self.height()
+        ov.setGeometry((w - ow) // 2, (h - oh) // 2, ow, oh)
         ov.saved.connect(self._on_customize_saved)
         ov.show()
         self._customize_overlay = ov
@@ -2294,9 +2326,11 @@ class MainWindow(QMainWindow):
         url, key, auto, manual = res[0], res[1], (res[2] if len(res) >= 3 else ""), (res[3] if len(res) >= 4 else res[0])
         cw = self.centralWidget()
         ow, oh = RemoteKeyOverlay._OW, RemoteKeyOverlay._OH
+        w = cw.width() if cw else self.width()
+        h = cw.height() if cw else self.height()
         ov = RemoteKeyOverlay(url, key, auto_login_url=auto, manual_url=manual, expiry_secs=600, parent=cw)
         ov.set_new_key_callback(self.on_remote_clicked)
-        ov.setGeometry((cw.width() - ow) // 2, (cw.height() - oh) // 2, ow, oh)
+        ov.setGeometry((w - ow) // 2, (h - oh) // 2, ow, oh)
         ov.closed.connect(lambda: setattr(self, "_remote_overlay", None))
         ov.show()
         self._remote_overlay = ov
@@ -2306,21 +2340,9 @@ class MainWindow(QMainWindow):
             self._remote_overlay._key_lbl.setText("CONNECTED")
             self._remote_overlay._key_lbl.setStyleSheet(f"color: {C.GREEN}; background: {C.GREEN_GHO}; border: 1px solid {C.GREEN};")
 
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        cw = self.centralWidget()
-        if self._remote_overlay and self._remote_overlay.isVisible():
-            ow, oh = RemoteKeyOverlay._OW, RemoteKeyOverlay._OH
-            self._remote_overlay.setGeometry((cw.width() - ow) // 2, (cw.height() - oh) // 2, ow, oh)
-        if self._overlay and self._overlay.isVisible():
-            ow, oh = SetupOverlay._OW, SetupOverlay._OH
-            self._overlay.setGeometry((cw.width() - ow) // 2, (cw.height() - oh) // 2, ow, oh)
-        if self._customize_overlay and self._customize_overlay.isVisible():
-            ow, oh = CustomizeOverlay._OW, CustomizeOverlay._OH
-            self._customize_overlay.setGeometry((cw.width() - ow) // 2, (cw.height() - oh) // 2, ow, oh)
-
-    def closeEvent(self, event):
+    def closeEvent(self, a0):
         """Cleanly terminate all sidecar services, MCP processes, and background threads."""
+        event = a0
         try:
             from core.mcp_engine import mcp_engine
             for server in list(mcp_engine._servers.values()):

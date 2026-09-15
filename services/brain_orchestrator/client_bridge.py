@@ -50,7 +50,7 @@ class MicroserviceBridge:
         except Exception as e:
             return f"Memory service error: {e}"
 
-    async def manage_cortex_tasks(self, action: str = "list", task: str = None, task_id: int = None, status: str = None, priority: str = "normal", due_date: str = None, project: str = None) -> str:
+    async def manage_cortex_tasks(self, action: str = "list", task: Optional[str] = None, task_id: Optional[int] = None, status: Optional[str] = None, priority: str = "normal", due_date: Optional[str] = None, project: Optional[str] = None) -> str:
         client = await self.get_client()
         try:
             resp = await client.post(
@@ -86,7 +86,7 @@ class MicroserviceBridge:
 
     # ── Research Agent Service Calls ─────────────────────────────────────────
 
-    async def web_search(self, query: str, mode: str = "search", items: list = None, aspect: str = None) -> str:
+    async def web_search(self, query: str, mode: str = "search", items: Optional[list] = None, aspect: Optional[str] = None) -> str:
         client = await self.get_client()
         try:
             resp = await client.post(
@@ -113,7 +113,7 @@ class MicroserviceBridge:
         except Exception as e:
             return f"Autonomous agent error: {e}"
 
-    async def youtube_video(self, action: str = "play", query: str = None, url: str = None, save: bool = False) -> str:
+    async def youtube_video(self, action: str = "play", query: Optional[str] = None, url: Optional[str] = None, save: bool = False) -> str:
         client = await self.get_client()
         try:
             resp = await client.post(
@@ -155,7 +155,7 @@ class MicroserviceBridge:
         except Exception as e:
             return f"Host agent error: {e}"
 
-    async def computer_settings(self, action: str, value: Any = None, app_name: str = None) -> str:
+    async def computer_settings(self, action: str, value: Any = None, app_name: Optional[str] = None) -> str:
         client = await self.get_client()
         try:
             resp = await client.post(

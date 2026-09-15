@@ -13,11 +13,14 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+from contextlib import asynccontextmanager
 
 if sys.platform == "win32":
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore
+        if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore
     except Exception:
         pass
 
@@ -34,8 +37,8 @@ try:
     from google import genai
     from google.genai import types
 except ImportError:
-    genai = None
-    types = None
+    genai: Any = None
+    types: Any = None
 
 from shared.config import (
     BRAIN_PORT,
@@ -46,10 +49,18 @@ from shared.config import (
 )
 from services.brain_orchestrator.client_bridge import bridge
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    brain._loop = asyncio.get_running_loop()
+    asyncio.create_task(brain.run_gemini_session())
+    yield
+
+
 app = FastAPI(
     title="DONNA Brain Orchestrator",
     description="Central LLM Gateway, Gemini Live Duplex Streamer, and Service Router",
     version="2.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -315,11 +326,11 @@ class BrainOrchestrator:
             result = f"Error executing tool '{name}': {e}"
             traceback.print_exc()
 
-        print(f"[Brain] 📤 Tool Result: {str(result)[:80]}")
-        await self.broadcast_hud({"type": "content", "title": f"TOOL: {name.upper()}", "text": str(result)})
+        print(f"[Brain] 📤 Tool Result: {result[:80]}")
+        await self.broadcast_hud({"type": "content", "title": f"TOOL: {name.upper()}", "text": result})
         if types and hasattr(types, "FunctionResponse"):
-            return types.FunctionResponse(id=fc.id, name=name, response={"result": str(result)})
-        return {"id": fc.id, "name": name, "response": {"result": str(result)}}
+            return types.FunctionResponse(id=fc.id, name=name, response={"result": result})
+        return {"id": fc.id, "name": name, "response": {"result": result}}
 
     async def run_gemini_session(self):
         if not genai or not types:
@@ -412,10 +423,11 @@ class BrainOrchestrator:
                                 # Audio chunks from Gemini Live
                                 raw_audio = response.data
                                 if not raw_audio and response.server_content and response.server_content.model_turn:
-                                    for part in response.server_content.model_turn.parts:
-                                        if part.inline_data and part.inline_data.data:
-                                            raw_audio = part.inline_data.data
-                                            break
+                                    if response.server_content.model_turn.parts:
+                                        for part in response.server_content.model_turn.parts:
+                                            if part.inline_data and part.inline_data.data:
+                                                raw_audio = part.inline_data.data
+                                                break
 
                                 if raw_audio:
                                     self.set_state("SPEAKING")
@@ -462,7 +474,7 @@ class BrainOrchestrator:
 
                                 # Tool Calls
                                 tool_call = response.tool_call
-                                if tool_call:
+                                if tool_call and tool_call.function_calls:
                                     fn_responses = []
                                     for fc in tool_call.function_calls:
                                         fr = await self.dispatch_tool_call(fc)
@@ -725,12 +737,6 @@ async def ws_hud(websocket: WebSocket):
     except WebSocketDisconnect:
         if websocket in brain.hud_clients:
             brain.hud_clients.remove(websocket)
-
-
-@app.on_event("startup")
-async def on_startup():
-    brain._loop = asyncio.get_running_loop()
-    asyncio.create_task(brain.run_gemini_session())
 
 
 if __name__ == "__main__":
