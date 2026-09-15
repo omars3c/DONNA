@@ -34,5 +34,7 @@ if platform.system() == "Windows":
             f'    "{sys.executable}" "{postinstall}" -install\n'
         )
 
-print("\n[OK] Setup complete! Run 'python main.py' (from wassupbeijing folder) to start Friday.")
+print("\n[OK] Setup complete!")
+print("  • To launch Microservices:   python run_microservices.py (or py run_microservices.py --with-ui)")
+print("  • To launch Monolith:        python main.py")
 

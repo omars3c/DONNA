@@ -15,6 +15,13 @@ from datetime import datetime, time as dtime
 from pathlib import Path
 from typing import Dict, Any, List, Callable, Optional
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 def get_base_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
@@ -121,7 +128,10 @@ class CronDaemon:
                 for job in list(self._jobs.values()):
                     if job.is_due(now_dt, now_mono):
                         job.last_run = now_mono
-                        print(f"[CronDaemon] ⏰ Triggering scheduled job: '{job.name}'")
+                        try:
+                            print(f"[CronDaemon] ⏰ Triggering scheduled job: '{job.name}'")
+                        except Exception:
+                            print(f"[CronDaemon] Triggering scheduled job: '{job.name}'")
                         if job.handler:
                             try:
                                 if asyncio.iscoroutinefunction(job.handler):

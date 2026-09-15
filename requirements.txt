@@ -1,6 +1,4 @@
 PyQt6
-PyQt6-Qt6Multimedia
-PyQt6-Multimedia
 sounddevice
 google-genai
 google-generativeai

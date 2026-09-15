@@ -1,0 +1,7 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+sounddevice>=0.4.6
+numpy>=1.26.0
+vosk>=0.3.45
+aiohttp>=3.9.0
+miniaudio>=1.59

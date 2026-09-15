@@ -47,3 +47,7 @@ Desktop.ini
 # Logs & Temporary Files
 *.log
 *.tmp
+
+config/api_keys.json
+config/certs/
+memory/cortex.db

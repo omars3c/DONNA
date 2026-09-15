@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  cortex-memory:
+    build:
+      context: .
+      dockerfile: services/cortex_memory_service/Dockerfile
+    container_name: donna-cortex-memory
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./memory:/app/memory
+      - ./config:/app/config
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  research-agent:
+    build:
+      context: .
+      dockerfile: services/research_agent_service/Dockerfile
+    container_name: donna-research-agent
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./documents:/app/documents
+      - ./config:/app/config
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  channel-gateway:
+    build:
+      context: .
+      dockerfile: services/channel_gateway_service/Dockerfile
+    container_name: donna-channel-gateway
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config:/app/config
+      - ./dashboard/static:/app/dashboard/static
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DONNA_BRAIN_HOST=brain-orchestrator
+
+  brain-orchestrator:
+    build:
+      context: .
+      dockerfile: services/brain_orchestrator/Dockerfile
+    container_name: donna-brain-orchestrator
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./config:/app/config
+      - ./core:/app/core
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DONNA_CORTEX_HOST=cortex-memory
+      - DONNA_RESEARCH_HOST=research-agent
+      - DONNA_HOST_AGENT_HOST=host.docker.internal
+    depends_on:
+      - cortex-memory
+      - research-agent

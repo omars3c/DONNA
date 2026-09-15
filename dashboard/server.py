@@ -31,6 +31,7 @@ except ImportError:
 _UPLOAD_OK = False
 try:
     from fastapi import UploadFile, File as FastAPIFile
+    import multipart  # noqa: F401
     _UPLOAD_OK = True
 except Exception:
     pass
