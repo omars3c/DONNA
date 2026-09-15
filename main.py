@@ -1034,6 +1034,10 @@ class JarvisLive:
     def speak_error(self, tool_name: str, error: str):
         short = str(error)[:120]
         self.ui.write_log(f"ERR: {tool_name} — {short}")
+        tb = traceback.format_exc()
+        if "NoneType" in tb:
+            tb = ""
+        self.ui.log_error("ERROR", tool_name, short, tb)
         self.speak(f"Sir, {tool_name} encountered an error. {short}")
 
     def _build_config(self) -> types.LiveConnectConfig:
@@ -1324,7 +1328,9 @@ class JarvisLive:
 
         except Exception as e:
             result = f"Tool '{name}' failed: {e}"
+            tb = traceback.format_exc()
             traceback.print_exc()
+            self.ui.log_error("ERROR", f"Tool: {name}", str(e)[:200], tb)
             self.speak_error(name, e)
 
         if not self.ui.muted:
@@ -1425,6 +1431,7 @@ class JarvisLive:
                     await asyncio.sleep(0.1)
         except Exception as e:
             print(f"[JARVIS] ❌ Mic: {e}")
+            self.ui.log_error("CRITICAL", "Microphone", str(e)[:200], traceback.format_exc())
             raise
 
     async def _receive_audio(self):
@@ -1547,7 +1554,9 @@ class JarvisLive:
                         )
         except Exception as e:
             print(f"[JARVIS] ❌ Recv: {e}")
+            tb = traceback.format_exc()
             traceback.print_exc()
+            self.ui.log_error("CRITICAL", "Audio Receiver", str(e)[:200], tb)
             raise
 
     async def _play_audio(self):
@@ -2044,10 +2053,12 @@ class JarvisLive:
                 err_str = str(e)
                 print(f"[JARVIS] Error ({type(e).__name__}): {e}")
                 traceback.print_exc()
+                tb_str = traceback.format_exc()
 
                 # Invalid API key — stop hammering the API, prompt re-configuration
                 if "API key not valid" in err_str or "1007" in err_str:
                     self.ui.write_log("ERR: API key invalid — please re-enter your key.")
+                    self.ui.log_error("CRITICAL", "API Key", "API key invalid — reconfiguration required.", "")
                     self.ui.set_state("SLEEPING")
                     self.ui.prompt_reconfig()
                     while not self.ui._win._ready:
@@ -2068,8 +2079,10 @@ class JarvisLive:
                         f"NET: Bağlantı kurulamadı — {_conn_backoff}s sonra tekrar deneniyor. "
                         "(VPN gerekiyor olabilir)"
                     )
+                    self.ui.log_error("WARNING", "Network", f"Connection failed — retry in {_conn_backoff}s", tb_str)
                 else:
                     self._conn_backoff = 3
+                    self.ui.log_error("CRITICAL", "Session", err_str[:200], tb_str)
             finally:
                 self.session = None
                 # Only save if there was a real conversation (≥3 turns)
