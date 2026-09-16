@@ -10,6 +10,8 @@ import time
 import base64
 import asyncio
 import traceback
+import io
+from PIL import Image
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -98,6 +100,23 @@ def _load_prompt() -> str:
     except Exception:
         pass
     return "You are D.O.N.N.A., an advanced AI assistant. Always use tools to complete tasks."
+
+
+def _resize_for_vision(raw: bytes, max_side: int = 1280, quality: int = 75) -> tuple[bytes, str]:
+    try:
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+        w, h = img.size
+        if max(w, h) > max_side:
+            ratio = max_side / max(w, h)
+            img = img.resize((int(w * ratio), int(h * ratio)), Image.Resampling.LANCZOS)
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=quality)
+        result_bytes = out.getvalue()
+        print(f"[Brain][DEBUG] Vision frame resized: {len(raw)} bytes -> {len(result_bytes)} bytes")
+        return result_bytes, "image/jpeg"
+    except Exception as e:
+        print(f"Error resizing vision frame: {e}")
+        return raw, "image/jpeg"
 
 
 # ── Tool Declarations for Gemini Function Calling ─────────────────────────────
@@ -220,6 +239,19 @@ TOOL_DECLARATIONS = [
             "properties": {},
         },
     },
+    {
+        "name": "capture_screen",
+        "description": (
+            "Captures the user's current screen so you can actually see what is on it — "
+            "an error dialog, a webpage, code, a document, etc. Call this whenever the user "
+            "asks what's on screen, asks you to read or explain something visible, or "
+            "references an error/window without describing it in words."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {},
+        },
+    },
 ]
 
 
@@ -237,6 +269,8 @@ class BrainOrchestrator:
         self._speech_done_event = asyncio.Event()
         self._briefing_sent = False
         self._last_content = None
+        self._last_screen_capture_ts = 0.0
+        self._pending_vision_frame = None
 
     def wake_up(self, duration: float = 15.0, reason: str = ""):
         self._active_until = time.monotonic() + duration
@@ -317,12 +351,31 @@ class BrainOrchestrator:
             elif name == "log_journal":
                 result = await bridge.log_journal(args.get("entry", ""))
             elif name == "computer_control":
-                result = await bridge.computer_control(args.get("action", "click"), **args)
+                action = args.get("action", "click")
+                result = await bridge.computer_control(action, **{k: v for k, v in args.items() if k != "action"})
             elif name == "computer_settings":
                 result = await bridge.computer_settings(args.get("action", ""), value=args.get("value"), app_name=args.get("app_name"))
             elif name == "system_status":
                 status_dict = await bridge.get_system_status()
                 result = json.dumps(status_dict, ensure_ascii=False)
+            elif name == "capture_screen":
+                now = time.monotonic()
+                if now - self._last_screen_capture_ts < 2.0:
+                    result = "Screen was just captured a moment ago."
+                else:
+                    img_bytes, mime_type = await bridge.capture_screenshot()
+                    if not img_bytes:
+                        result = "Не могу получить доступ к экрану — Windows Host Agent недоступен."
+                        try:
+                            from shared.error_reporter import report
+                            report("ERROR", "capture_screen", "Host agent unreachable for screenshot")
+                        except Exception:
+                            pass
+                    else:
+                        resized = _resize_for_vision(img_bytes)
+                        self._pending_vision_frame = resized
+                        self._last_screen_capture_ts = now
+                        result = "Screenshot captured."
             else:
                 result = f"Tool '{name}' is not recognized."
         except Exception as e:
@@ -485,6 +538,17 @@ class BrainOrchestrator:
                                     for fc in tool_call.function_calls:
                                         fr = await self.dispatch_tool_call(fc)
                                         fn_responses.append(fr)
+                                    
+                                    if self._pending_vision_frame:
+                                        frame_bytes, frame_mime = self._pending_vision_frame
+                                        self._pending_vision_frame = None
+                                        try:
+                                            await session.send_realtime_input(
+                                                video=types.Blob(data=frame_bytes, mime_type=frame_mime)
+                                            )
+                                        except Exception as e:
+                                            print(f"[Brain] Error sending vision frame: {e}")
+
                                     try:
                                         await session.send_tool_response(function_responses=fn_responses)
                                     except Exception as e:
