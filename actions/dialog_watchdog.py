@@ -6,15 +6,17 @@ indicating silent application launch failures or OS errors.
 """
 
 import time
-from typing import Optional, Set
+from typing import Any, Optional, Set
 
 try:
-    import win32gui
-    import win32con
+    import win32gui as _w32gui  # type: ignore
+    import win32con as _w32con  # type: ignore
+    win32gui: Any = _w32gui
+    win32con: Any = _w32con
     _PYWIN32_AVAILABLE = True
 except ImportError:
-    win32gui = None
-    win32con = None
+    win32gui: Any = None
+    win32con: Any = None
     _PYWIN32_AVAILABLE = False
 
 
@@ -24,7 +26,7 @@ def snapshot_windows() -> Set[int]:
     Enumerates windows across both the current thread desktop and the interactive
     input desktop. Returns an empty set if pywin32 is not available or upon error.
     """
-    if not _PYWIN32_AVAILABLE:
+    if not _PYWIN32_AVAILABLE or win32gui is None:
         return set()
     hwnds: Set[int] = set()
 
@@ -57,7 +59,7 @@ def _extract_dialog_text(hwnd: int) -> str:
     Extract dialog title and static control text from a window handle.
     Returns '{title}: {body}' or whichever part is non-empty.
     """
-    if not _PYWIN32_AVAILABLE:
+    if not _PYWIN32_AVAILABLE or win32gui is None:
         return ""
     try:
         title = win32gui.GetWindowText(hwnd).strip()
@@ -101,7 +103,7 @@ def watch_for_dialog(
     Returns the dialog text (title + first static control text), or None if
     nothing appeared. Never raises exceptions.
     """
-    if not _PYWIN32_AVAILABLE:
+    if not _PYWIN32_AVAILABLE or win32gui is None or win32con is None:
         return None
 
     try:

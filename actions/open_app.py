@@ -17,7 +17,7 @@ except Exception:
 from actions.dialog_watchdog import watch_for_dialog, snapshot_windows
 
 try:
-    import psutil
+    import psutil  # type: ignore
     _PSUTIL = True
 except ImportError:
     _PSUTIL = False
@@ -191,7 +191,7 @@ def _launch_macos(app_name: str) -> bool:
             pass
 
     try:
-        import pyautogui
+        import pyautogui  # type: ignore
         pyautogui.hotkey("command", "space")
         time.sleep(0.6)
         pyautogui.write(app_name, interval=0.05)
