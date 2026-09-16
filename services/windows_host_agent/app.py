@@ -83,7 +83,13 @@ def api_launch_app(req: AppLaunchRequest):
     try:
         params = {"app_name": req.app_name}
         res_text = open_app(parameters=params)
-        return GenericResponse(success=True, message=res_text or f"Launched {req.app_name}")
+        failed = (
+            res_text.startswith("Failed to open")
+            or res_text.startswith("Could not confirm")
+            or res_text.startswith("Started a launch attempt")
+            or not res_text.startswith("Opened ")
+        )
+        return GenericResponse(success=not failed, message=res_text or f"Launched {req.app_name}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
