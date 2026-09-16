@@ -18,6 +18,16 @@ Usage:
 
 import sys
 import os
+
+if sys.platform == "win32":
+    try:
+        if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import time
 import signal
 import subprocess
@@ -94,7 +104,10 @@ class MicroserviceRunner:
                     break
                 clean = line.rstrip("\r\n")
                 if clean:
-                    print(f"{prefix}{clean}")
+                    try:
+                        print(f"{prefix}{clean}")
+                    except Exception:
+                        pass
                     # Stdout scraper: forward error-like lines to Sentinel
                     if not _is_sentinel:
                         try:

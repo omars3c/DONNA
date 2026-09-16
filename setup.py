@@ -35,6 +35,6 @@ if platform.system() == "Windows":
         )
 
 print("\n[OK] Setup complete!")
-print("  • To launch Microservices:   python run_microservices.py (or py run_microservices.py --with-ui)")
-print("  • To launch Monolith:        python main.py")
+print("  • To launch D.O.N.N.A.:       python run_microservices.py")
+print("  • Headless (server-only):    python run_microservices.py --no-ui")
 

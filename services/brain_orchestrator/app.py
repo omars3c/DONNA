@@ -74,7 +74,7 @@ app.add_middleware(
 from shared.error_reporter import install_sentinel, report, report_exception
 install_sentinel(app, "brain_orchestrator")
 
-LIVE_MODEL = "gemini-3.1-flash-live-preview"
+LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
 PROMPT_PATH = ROOT_DIR / "core" / "prompt.txt"
 
 
@@ -102,6 +102,16 @@ def _load_prompt() -> str:
 
 # ── Tool Declarations for Gemini Function Calling ─────────────────────────────
 TOOL_DECLARATIONS = [
+    {
+        "name": "screen_process",
+        "description": "Captures and analyzes what is currently displayed on the user's screen or camera. Call this when user asks what is on screen or asks to look at their screen.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "angle": {"type": "STRING", "description": "'screen' to capture display, 'camera' for webcam. Default: 'screen'"},
+            },
+        },
+    },
     {
         "name": "open_app",
         "description": "Opens any Windows application. Always call this when user asks to open an app.",
@@ -237,6 +247,7 @@ class BrainOrchestrator:
         self._speech_done_event = asyncio.Event()
         self._briefing_sent = False
         self._last_content = None
+        self._tool_in_progress = False
 
     def wake_up(self, duration: float = 15.0, reason: str = ""):
         self._active_until = time.monotonic() + duration
@@ -317,9 +328,25 @@ class BrainOrchestrator:
             elif name == "log_journal":
                 result = await bridge.log_journal(args.get("entry", ""))
             elif name == "computer_control":
-                result = await bridge.computer_control(args.get("action", "click"), **args)
+                action_val = args.get("action", "click")
+                c_kwargs = {k: v for k, v in args.items() if k != "action"}
+                result = await bridge.computer_control(action_val, **c_kwargs)
             elif name == "computer_settings":
                 result = await bridge.computer_settings(args.get("action", ""), value=args.get("value"), app_name=args.get("app_name"))
+            elif name == 'screen_process':
+                angle = args.get("angle", "screen")
+                img_bytes, mime_type = await bridge.capture_screenshot()
+                if img_bytes:
+                    try:
+                        if self.session:
+                            await self.session.send_realtime_input(
+                                media=types.Blob(data=img_bytes, mime_type=mime_type or "image/jpeg")
+                            )
+                    except Exception as _e:
+                        print(f"[Brain] Note: realtime media send: {_e}")
+                    result = "Screenshot captured successfully and transmitted to vision analysis."
+                else:
+                    result = "Unable to capture screenshot at this moment."
             elif name == "system_status":
                 status_dict = await bridge.get_system_status()
                 result = json.dumps(status_dict, ensure_ascii=False)
@@ -411,15 +438,20 @@ class BrainOrchestrator:
                                     except Exception:
                                         break
 
-                            if self.state in ("LISTENING", "THINKING"):
+                            # Send mic audio ONLY when LISTENING and NOT during tool execution (prevents 1008 policy violation)
+                            if self.state == "LISTENING" and not getattr(self, "_tool_in_progress", False):
                                 try:
                                     await session.send_realtime_input(
                                         audio=types.Blob(data=pcm_chunk, mime_type="audio/pcm;rate=16000")
                                     )
                                 except Exception as e:
-                                    print(f"[Brain] Gemini session dead, forcing reconnect: {e}")
-                                    report_exception("gemini_session", e, action="send_audio")
-                                    raise  # пробрасываем наружу, чтобы сработал внешний reconnect-цикл
+                                    err_s = str(e)
+                                    if "1008" in err_s or "policy violation" in err_s.lower():
+                                        print(f"[Brain] Live WebSocket policy/session reset (1008), reconnecting: {e}")
+                                    else:
+                                        print(f"[Brain] Gemini session dead, forcing reconnect: {e}")
+                                        report_exception("gemini_session", e, action="send_audio")
+                                    raise  # Trigger outer reconnect loop
 
                     async def receive_gemini_loop():
                         while True:
@@ -481,15 +513,19 @@ class BrainOrchestrator:
                                 # Tool Calls
                                 tool_call = response.tool_call
                                 if tool_call and tool_call.function_calls:
-                                    fn_responses = []
-                                    for fc in tool_call.function_calls:
-                                        fr = await self.dispatch_tool_call(fc)
-                                        fn_responses.append(fr)
+                                    self._tool_in_progress = True
                                     try:
-                                        await session.send_tool_response(function_responses=fn_responses)
-                                    except Exception as e:
-                                        print(f"[Brain] Error sending tool response: {e}")
-                                        report("ERROR", "tool_dispatch", f"Failed to send tool response: {e}")
+                                        fn_responses = []
+                                        for fc in tool_call.function_calls:
+                                            fr = await self.dispatch_tool_call(fc)
+                                            fn_responses.append(fr)
+                                        try:
+                                            await session.send_tool_response(function_responses=fn_responses)
+                                        except Exception as e:
+                                            print(f"[Brain] Error sending tool response: {e}")
+                                            report("ERROR", "tool_dispatch", f"Failed to send tool response: {e}")
+                                    finally:
+                                        self._tool_in_progress = False
 
                     async def inactivity_watchdog():
                         while True:
@@ -504,8 +540,13 @@ class BrainOrchestrator:
                         gather_task.cancel()
 
             except Exception as e:
-                print(f"[Brain] Session connection dropped: {e}. Reconnecting in 3s...")
-                report_exception("gemini_session", e, model=LIVE_MODEL)
+                err_s = str(e)
+                try:
+                    print(f"[Brain] Session connection dropped: {e}. Reconnecting in 3s...")
+                except Exception:
+                    pass
+                if "1008" not in err_s and "policy violation" not in err_s.lower() and not isinstance(e, (BrokenPipeError, OSError)):
+                    report_exception("gemini_session", e, model=LIVE_MODEL)
                 self.session = None
                 self.set_state("STANDBY")
                 await asyncio.sleep(3)

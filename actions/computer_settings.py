@@ -711,7 +711,7 @@ Rules:
 
     try:
         resp = None
-        for m in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]:
+        for m in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
             try:
                 resp = _client.models.generate_content(model=m, contents=prompt)
                 if resp and resp.text:

@@ -53,6 +53,8 @@ HEADERS = {
 }
 
 _gemini_quota_failed = False
+_gemini_quota_cooldown_until = 0.0
+import time as _t_cooldown
 
 
 def _get_api_key() -> str:
@@ -68,17 +70,16 @@ def _get_api_key() -> str:
 # ── 1. Gemini Grounded Search (with model fallback) ──────────────────────────
 
 GEMINI_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-1.5-flash",
+    "gemini-3.6-flash",
     "gemini-flash-latest",
+    "gemini-2.5-flash",
 ]
 
 
 def _gemini_search(query: str) -> str:
-    global _gemini_quota_failed
-    if _gemini_quota_failed:
-        raise ValueError("Gemini API quota already exceeded in this session.")
+    global _gemini_quota_failed, _gemini_quota_cooldown_until
+    if _gemini_quota_failed or _t_cooldown.monotonic() < _gemini_quota_cooldown_until:
+        raise ValueError("Gemini API quota cooldown active.")
 
     key = _get_api_key()
     if not key:
@@ -113,7 +114,11 @@ def _gemini_search(query: str) -> str:
             err_str = str(e).lower()
             if "resource_exhausted" in err_str or "429" in err_str or "quota" in err_str:
                 _gemini_quota_failed = True
+                _gemini_quota_cooldown_until = _t_cooldown.monotonic() + 300.0
                 raise ValueError("Gemini API quota exhausted.") from e
+            # If model is retired / unavailable (404), seamlessly continue to fallback model
+            if "no longer available" in err_str or "404" in err_str:
+                continue
             continue
 
     raise ValueError(f"Gemini search failed: {last_err}")
@@ -380,8 +385,8 @@ def _format_news(query: str, results: list[dict]) -> str:
 
 def _gemini_headlines(n: int = 5) -> tuple[list[str], str]:
     """Fetches current headlines via Gemini grounded search or DDG news."""
-    global _gemini_quota_failed
-    if not _gemini_quota_failed:
+    global _gemini_quota_failed, _gemini_quota_cooldown_until
+    if not _gemini_quota_failed and _t_cooldown.monotonic() >= _gemini_quota_cooldown_until:
         try:
             key = _get_api_key()
             if key:

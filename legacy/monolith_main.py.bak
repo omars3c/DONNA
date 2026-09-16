@@ -34,6 +34,13 @@ import threading
 import time
 import json
 import traceback
+import logging as _logging
+
+try:
+    import sentry_sdk
+    _HAS_SENTRY = True
+except ImportError:
+    _HAS_SENTRY = False
 from datetime import datetime
 from pathlib import Path
 
@@ -115,6 +122,34 @@ CHANNELS            = 1
 SEND_SAMPLE_RATE    = 16000
 RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE          = 1024
+
+
+def _init_sentry():
+    """Initialize Sentry SDK for error tracking."""
+    if not _HAS_SENTRY:
+        print("[Sentry] SDK not installed - skipping")
+        return
+    dsn = ""
+    try:
+        cfg = json.loads(API_CONFIG_PATH.read_text(encoding="utf-8"))
+        dsn = cfg.get("sentry_dsn", "")
+    except Exception:
+        pass
+    if not dsn:
+        dsn = "https://ed5bdcdaf8dac0c6f64d57d224af126b@o4512095989989376.ingest.de.sentry.io/4512096005980240"
+    try:
+        sentry_sdk.init(
+            dsn=dsn,
+            traces_sample_rate=0.0,
+            environment="production",
+            release="donna@1.0.0",
+            attach_stacktrace=True,
+        )
+        print("[Sentry] Initialized")
+    except Exception as e:
+        print(f"[Sentry] Init failed: {e}")
+
+_init_sentry()
 
 def _get_api_key() -> str:
     with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -931,7 +966,7 @@ class JarvisLive:
                 try:
                     self._loop.call_soon_threadsafe(
                         self.out_queue.put_nowait,
-                        {"data": chunk, "mime_type": "audio/pcm"}
+                        {"data": chunk, "mime_type": "audio/pcm;rate=16000"}
                     )
                 except Exception:
                     pass
@@ -1034,10 +1069,8 @@ class JarvisLive:
     def speak_error(self, tool_name: str, error: str):
         short = str(error)[:120]
         self.ui.write_log(f"ERR: {tool_name} — {short}")
-        tb = traceback.format_exc()
-        if "NoneType" in tb:
-            tb = ""
-        self.ui.log_error("ERROR", tool_name, short, tb)
+        if _HAS_SENTRY:
+            sentry_sdk.capture_exception()
         self.speak(f"Sir, {tool_name} encountered an error. {short}")
 
     def _build_config(self) -> types.LiveConnectConfig:
@@ -1101,7 +1134,6 @@ class JarvisLive:
             input_audio_transcription={},
             system_instruction="\n".join(parts),
             tools=[{"function_declarations": TOOL_DECLARATIONS}],
-            session_resumption=types.SessionResumptionConfig(),
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
@@ -1330,7 +1362,6 @@ class JarvisLive:
             result = f"Tool '{name}' failed: {e}"
             tb = traceback.format_exc()
             traceback.print_exc()
-            self.ui.log_error("ERROR", f"Tool: {name}", str(e)[:200], tb)
             self.speak_error(name, e)
 
         if not self.ui.muted:
@@ -1354,7 +1385,15 @@ class JarvisLive:
                     except Exception:
                         break
             try:
-                await self.session.send_realtime_input(media=msg)
+                if isinstance(msg, dict) and "data" in msg:
+                    raw_pcm = msg["data"]
+                    m_type = msg.get("mime_type", "audio/pcm;rate=16000")
+                else:
+                    raw_pcm = msg
+                    m_type = "audio/pcm;rate=16000"
+                await self.session.send_realtime_input(
+                    audio=types.Blob(data=raw_pcm, mime_type=m_type)
+                )
             except Exception:
                 pass
 
@@ -1409,7 +1448,7 @@ class JarvisLive:
                 else:
                     loop.call_soon_threadsafe(
                         self.out_queue.put_nowait,
-                        {"data": data, "mime_type": "audio/pcm"}
+                        {"data": data, "mime_type": "audio/pcm;rate=16000"}
                     )
             else:
                 # Standby session: buffer rolling audio and run offline Wake Word spotter
@@ -1431,7 +1470,7 @@ class JarvisLive:
                     await asyncio.sleep(0.1)
         except Exception as e:
             print(f"[JARVIS] ❌ Mic: {e}")
-            self.ui.log_error("CRITICAL", "Microphone", str(e)[:200], traceback.format_exc())
+            if _HAS_SENTRY: sentry_sdk.capture_exception(e)
             raise
 
     async def _receive_audio(self):
@@ -1556,7 +1595,7 @@ class JarvisLive:
             print(f"[JARVIS] ❌ Recv: {e}")
             tb = traceback.format_exc()
             traceback.print_exc()
-            self.ui.log_error("CRITICAL", "Audio Receiver", str(e)[:200], tb)
+            if _HAS_SENTRY: sentry_sdk.capture_exception(e)
             raise
 
     async def _play_audio(self):
@@ -1771,7 +1810,7 @@ class JarvisLive:
         try:
             from google import genai as _genai
             client = _genai.Client(api_key=_get_api_key())
-            for m in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]:
+            for m in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
                 try:
                     resp = await asyncio.to_thread(
                         client.models.generate_content,
@@ -1973,7 +2012,7 @@ class JarvisLive:
                 client = genai.Client(api_key=_get_api_key())
                 resp = await asyncio.to_thread(
                     client.models.generate_content,
-                    model="gemini-2.0-flash",
+                    model="gemini-3.6-flash",
                     contents=(
                         f"You are D.O.N.N.A. (Донна), tactical AI assistant. The operator sent a message via Telegram:\n"
                         f"'{msg_text}'\n"
@@ -2056,9 +2095,9 @@ class JarvisLive:
                 tb_str = traceback.format_exc()
 
                 # Invalid API key — stop hammering the API, prompt re-configuration
-                if "API key not valid" in err_str or "1007" in err_str:
+                if "API key not valid" in err_str or "API_KEY_INVALID" in err_str:
                     self.ui.write_log("ERR: API key invalid — please re-enter your key.")
-                    self.ui.log_error("CRITICAL", "API Key", "API key invalid — reconfiguration required.", "")
+                    if _HAS_SENTRY: sentry_sdk.capture_message("API key invalid - reconfiguration required.", level="error")
                     self.ui.set_state("SLEEPING")
                     self.ui.prompt_reconfig()
                     while not self.ui._win._ready:
@@ -2079,10 +2118,10 @@ class JarvisLive:
                         f"NET: Bağlantı kurulamadı — {_conn_backoff}s sonra tekrar deneniyor. "
                         "(VPN gerekiyor olabilir)"
                     )
-                    self.ui.log_error("WARNING", "Network", f"Connection failed — retry in {_conn_backoff}s", tb_str)
+                    if _HAS_SENTRY: sentry_sdk.capture_message(f"Network: Connection failed - retry in {_conn_backoff}s", level="warning")
                 else:
                     self._conn_backoff = 3
-                    self.ui.log_error("CRITICAL", "Session", err_str[:200], tb_str)
+                    if _HAS_SENTRY: sentry_sdk.capture_exception(e)
             finally:
                 self.session = None
                 # Only save if there was a real conversation (≥3 turns)

@@ -1,0 +1,12 @@
+{
+  "_comment": "D.O.N.N.A. Configuration Template — Copy this file to config/api_keys.json and fill in your values.",
+  "gemini_api_key": "YOUR_GEMINI_API_KEY_HERE",
+  "sentry_dsn": "",
+  "telegram_bot_token": "",
+  "telegram_chat_id": "",
+  "os_system": "windows",
+  "assistant_name": "Донна",
+  "user_name": "Сэр",
+  "gemini_voice": "Kore",
+  "morning_brief_enabled": true
+}

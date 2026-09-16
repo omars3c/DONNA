@@ -15,7 +15,51 @@ Manual reporting:
 """
 
 import atexit
+import sys
+
+class _SafeStreamProxy:
+    """Prevents OSError(22, 'Invalid argument') and BrokenPipeError on Windows pipe write/flush."""
+    def __init__(self, target):
+        self._target = target
+
+    def write(self, s):
+        try:
+            return self._target.write(s)
+        except OSError as e:
+            if getattr(e, "errno", None) in (22, 32):
+                return len(s)
+            raise
+        except Exception:
+            return len(s)
+
+    def flush(self):
+        try:
+            return self._target.flush()
+        except OSError as e:
+            if getattr(e, "errno", None) in (22, 32):
+                return
+            raise
+        except Exception:
+            pass
+
+    def __getattr__(self, name):
+        return getattr(self._target, name)
+
+if sys.platform == "win32":
+    try:
+        if sys.stdout and not isinstance(sys.stdout, _SafeStreamProxy):
+            sys.stdout = _SafeStreamProxy(sys.stdout)
+        if sys.stderr and not isinstance(sys.stderr, _SafeStreamProxy):
+            sys.stderr = _SafeStreamProxy(sys.stderr)
+    except Exception:
+        pass
+
 import contextvars
+try:
+    import sentry_sdk
+    _HAS_SENTRY = True
+except ImportError:
+    _HAS_SENTRY = False
 import json
 import logging
 import os
@@ -75,10 +119,64 @@ _in_reporter = threading.local()
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+
+
+def _sentry_before_send(event, hint):
+    """Filters out expected rate limits (429) and broken pipe errors from Sentry reports."""
+    try:
+        if "exc_info" in hint and hint["exc_info"]:
+            exc_val = hint["exc_info"][1]
+            err_s = str(exc_val).lower()
+            if "429" in err_s or "resource_exhausted" in err_s or "quota" in err_s or "rate-limits" in err_s:
+                return None
+            if getattr(exc_val, "errno", None) in (22, 32) or isinstance(exc_val, (BrokenPipeError,)):
+                return None
+
+        exceptions = event.get("exception", {}).get("values", [])
+        for ex in exceptions:
+            val = str(ex.get("value", "")).lower()
+            if "429" in val or "resource_exhausted" in val or "quota" in val or "rate-limits" in val:
+                return None
+            if "errno 22" in val or "broken pipe" in val:
+                return None
+    except Exception:
+        pass
+    return event
+
+def _init_sentry_for_service(service_name: str) -> None:
+    if not _HAS_SENTRY:
+        return
+    try:
+        if sentry_sdk.is_initialized():
+            sentry_sdk.set_tag("service", service_name)
+            return
+        cfg_path = _BASE_DIR / "config" / "api_keys.json"
+        dsn = ""
+        if cfg_path.exists():
+            try:
+                cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+                dsn = cfg.get("sentry_dsn", "")
+            except Exception:
+                pass
+        if not dsn:
+            dsn = "https://ed5bdcdaf8dac0c6f64d57d224af126b@o4512095989989376.ingest.de.sentry.io/4512096005980240"
+        sentry_sdk.init(
+            dsn=dsn,
+            traces_sample_rate=0.0,
+            environment="production",
+            release="donna@1.0.0",
+            attach_stacktrace=True,
+            before_send=_sentry_before_send,
+        )
+        sentry_sdk.set_tag("service", service_name)
+    except Exception:
+        pass
+
 def init_reporter(service_name: str) -> None:
     """Initialize the reporter for a given service. Safe to call multiple times."""
     global _service_name, _initialized, _worker_thread
     _service_name = service_name
+    _init_sentry_for_service(service_name)
     _ensure_config()
 
     if _initialized:
@@ -130,6 +228,23 @@ def report(
             "context": ctx if ctx else None,
             "ts": time.time(),
         }
+
+        if _HAS_SENTRY:
+            try:
+                with sentry_sdk.isolation_scope() as scope:
+                    scope.set_tag("service", _service_name)
+                    scope.set_tag("source", source)
+                    scope.set_level("error" if severity in ("ERROR", "CRITICAL") else "warning")
+                    if cid:
+                        scope.set_tag("correlation_id", cid)
+                    if ctx:
+                        scope.set_context("donna_context", ctx)
+                    if exc:
+                        sentry_sdk.capture_exception(exc)
+                    elif severity in ("ERROR", "CRITICAL"):
+                        sentry_sdk.capture_message(f"[{_service_name}] {message}", level="error")
+            except Exception:
+                pass
 
         try:
             _queue.put_nowait(payload)
@@ -317,12 +432,16 @@ def install_sentinel(app, service_name: str) -> None:
             def _asyncio_exc_handler(loop, context):
                 exc = context.get("exception")
                 msg = context.get("message", "asyncio exception")
+                if isinstance(exc, (BrokenPipeError,)) or (isinstance(exc, OSError) and getattr(exc, "errno", None) in (22, 32)):
+                    return  # Suppress broken pipe / pipe closure during shutdown
                 if exc:
                     report_exception("asyncio_unhandled", exc)
                 else:
                     report("ERROR", "asyncio_unhandled", msg)
-                # Call default handler too
-                loop.default_exception_handler(context)
+                try:
+                    loop.default_exception_handler(context)
+                except Exception:
+                    pass
 
             loop.set_exception_handler(_asyncio_exc_handler)
         except Exception:

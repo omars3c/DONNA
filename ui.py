@@ -1156,213 +1156,8 @@ class MiniHudPanel(QWidget):
         p.drawText(QRectF(0, 0, W, 12), Qt.AlignmentFlag.AlignCenter, self.title)
 
 
-# ── Error Tracker Floating Panel ───────────────────────────────────────────────
-
-class ErrorTrackerPanel(QWidget):
-    """Small floating error log window — shows DONNA errors with severity, source, traceback."""
-
-    _MAX_ENTRIES = 200
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.SubWindow)
-        self.setFixedSize(480, 320)
-        self.hide()
-        self._error_count = 0
-        self._entries: list[dict] = []
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(0)
-
-        # ── Title bar ────────────────────────────────────────────────────
-        hdr = QWidget()
-        hdr.setFixedHeight(30)
-        hdr.setStyleSheet(f"""
-            background: rgba(204, 68, 68, 0.12);
-            border-bottom: 1px solid {C.RED_DIM};
-        """)
-        hdr_lay = QHBoxLayout(hdr)
-        hdr_lay.setContentsMargins(10, 0, 8, 0)
-        hdr_lay.setSpacing(8)
-
-        ico = QLabel("⚠")
-        ico.setFont(QFont("Segoe UI Emoji", 10))
-        ico.setStyleSheet(f"color: {C.RED};")
-        hdr_lay.addWidget(ico)
-
-        title = QLabel("ERROR TRACKER")
-        title.setFont(QFont("Orbitron", 8, QFont.Weight.Bold))
-        title.setStyleSheet(f"color: {C.RED}; letter-spacing: 1px;")
-        hdr_lay.addWidget(title)
-
-        self._count_badge = QLabel("0")
-        self._count_badge.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
-        self._count_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._count_badge.setFixedSize(24, 16)
-        self._count_badge.setStyleSheet(f"""
-            background: {C.RED}; color: #ffffff;
-            border-radius: 3px; font-weight: bold;
-        """)
-        hdr_lay.addWidget(self._count_badge)
-
-        hdr_lay.addStretch()
-
-        clear_btn = QPushButton("CLEAR")
-        clear_btn.setFixedSize(50, 20)
-        clear_btn.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
-        clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        clear_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent; color: {C.TEXT_DIM};
-                border: 1px solid {C.BORDER}; border-radius: 2px;
-            }}
-            QPushButton:hover {{ color: {C.RED}; border-color: {C.RED_DIM}; }}
-        """)
-        clear_btn.clicked.connect(self._clear_all)
-        hdr_lay.addWidget(clear_btn)
-
-        close_btn = QPushButton("✕")
-        close_btn.setFixedSize(20, 20)
-        close_btn.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
-        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        close_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent; color: {C.TEXT_DIM};
-                border: none;
-            }}
-            QPushButton:hover {{ color: {C.RED}; }}
-        """)
-        close_btn.clicked.connect(self.hide)
-        hdr_lay.addWidget(close_btn)
-
-        lay.addWidget(hdr)
-
-        # ── Error Log Scroll ─────────────────────────────────────────────
-        self._log = QTextEdit()
-        self._log.setReadOnly(True)
-        self._log.setFont(QFont("Courier New", 7))
-        self._log.setStyleSheet(f"""
-            QTextEdit {{
-                background: rgba(4, 6, 8, 0.95);
-                color: {C.TEXT};
-                border: none;
-                padding: 6px;
-            }}
-            QTextEdit QScrollBar:vertical {{
-                background: {C.PANEL2}; width: 6px; border: none;
-            }}
-            QTextEdit QScrollBar::handle:vertical {{
-                background: {C.RED_DIM}; border-radius: 3px; min-height: 20px;
-            }}
-            QTextEdit QScrollBar::add-line:vertical,
-            QTextEdit QScrollBar::sub-line:vertical {{
-                height: 0px;
-            }}
-        """)
-        lay.addWidget(self._log, stretch=1)
-
-        # ── Footer ───────────────────────────────────────────────────────
-        ftr = QWidget()
-        ftr.setFixedHeight(20)
-        ftr.setStyleSheet(f"background: rgba(204, 68, 68, 0.06); border-top: 1px solid {C.RED_DIM};")
-        ftr_lay = QHBoxLayout(ftr)
-        ftr_lay.setContentsMargins(10, 0, 10, 0)
-        self._ftr_lbl = QLabel("NO ERRORS")
-        self._ftr_lbl.setFont(QFont("Courier New", 6))
-        self._ftr_lbl.setStyleSheet(f"color: {C.TEXT_DIM};")
-        ftr_lay.addWidget(self._ftr_lbl)
-        ftr_lay.addStretch()
-        ftr_ts = QLabel("LIVE")
-        ftr_ts.setFont(QFont("Courier New", 6, QFont.Weight.Bold))
-        ftr_ts.setStyleSheet(f"color: {C.RED};")
-        ftr_lay.addWidget(ftr_ts)
-        lay.addWidget(ftr)
-
-        # Overall border
-        self.setStyleSheet(f"""
-            ErrorTrackerPanel {{
-                background: rgba(6, 8, 9, 0.96);
-                border: 1px solid {C.RED_DIM};
-                border-radius: 6px;
-            }}
-        """)
-
-        # Drag support
-        self._drag_pos = None
-
-    def mousePressEvent(self, a0):
-        if a0.button() == Qt.MouseButton.LeftButton and a0.position().y() < 30:
-            self._drag_pos = a0.position().toPoint()
-
-    def mouseMoveEvent(self, a0):
-        if self._drag_pos is not None:
-            delta = a0.position().toPoint() - self._drag_pos
-            self.move(self.pos() + delta)
-
-    def mouseReleaseEvent(self, a0):
-        self._drag_pos = None
-
-    def add_error(self, severity: str, source: str, message: str, traceback_str: str = ""):
-        """Add an error entry. severity: CRITICAL / ERROR / WARNING"""
-        ts = datetime.now().strftime("%H:%M:%S")
-        self._error_count += 1
-        entry = {
-            "ts": ts, "severity": severity.upper(),
-            "source": source, "message": message,
-            "traceback": traceback_str,
-        }
-        self._entries.append(entry)
-        if len(self._entries) > self._MAX_ENTRIES:
-            self._entries = self._entries[-self._MAX_ENTRIES:]
-
-        sev = entry["severity"]
-        if sev == "CRITICAL":
-            sev_col = "#ff2244"
-        elif sev == "ERROR":
-            sev_col = C.RED
-        else:
-            sev_col = "#d4a820"
-
-        html = (
-            f"<div style='margin-bottom:4px; border-bottom:1px solid rgba(204,68,68,0.15); padding-bottom:3px;'>"
-            f"<span style='color:{C.TEXT_DIM};'>[{ts}]</span> "
-            f"<span style='color:{sev_col}; font-weight:bold;'>[{sev}]</span> "
-            f"<span style='color:{C.PRI};'>{source}</span><br/>"
-            f"<span style='color:{C.TEXT};'>{message}</span>"
-        )
-        if traceback_str:
-            tb_escaped = traceback_str.replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>")
-            html += (
-                f"<br/><span style='color:{C.TEXT_DIM}; font-size:6pt;'>"
-                f"{tb_escaped}</span>"
-            )
-        html += "</div>"
-
-        self._log.append(html)
-        self._count_badge.setText(str(self._error_count))
-        self._ftr_lbl.setText(f"{self._error_count} ERROR(S) LOGGED")
-        self._ftr_lbl.setStyleSheet(f"color: {C.RED};")
-
-        # Auto-scroll to bottom
-        sb = self._log.verticalScrollBar()
-        if sb:
-            sb.setValue(sb.maximum())
-
-    def _clear_all(self):
-        self._entries.clear()
-        self._error_count = 0
-        self._log.clear()
-        self._count_badge.setText("0")
-        self._ftr_lbl.setText("NO ERRORS")
-        self._ftr_lbl.setStyleSheet(f"color: {C.TEXT_DIM};")
-
-    @property
-    def error_count(self) -> int:
-        return self._error_count
 
 
-# ── Main Tactical Window ───────────────────────────────────────────────────────
 
 class MainWindow(QMainWindow):
     _log_sig        = pyqtSignal(str)
@@ -1373,7 +1168,6 @@ class MainWindow(QMainWindow):
     _cam_stream_sig = pyqtSignal(bool)
     _cam_frame_sig  = pyqtSignal(bytes)
     _clipboard_sig  = pyqtSignal(str)
-    _error_sig      = pyqtSignal(str, str, str, str)  # severity, source, message, traceback
 
     def __init__(self, face_path: str = ""):
         super().__init__()
@@ -1437,15 +1231,8 @@ class MainWindow(QMainWindow):
         # Quick Access Settings Drawer
         self._quick_drawer = self._build_quick_drawer()
 
-        # Error Tracker Panel
-        self._error_tracker = ErrorTrackerPanel(self.centralWidget())
-        self._error_tracker.setGeometry(
-            self.width() - 500, 50, 480, 320
-        )
-
         # Signals
         self._log_sig.connect(self._append_log)
-        self._error_sig.connect(self._on_error_received)
         self._state_sig.connect(self._apply_state)
         self._content_sig.connect(self._show_content)
         self._reconfig_sig.connect(self._show_setup)
@@ -1531,22 +1318,6 @@ class MainWindow(QMainWindow):
         lay.addWidget(badge)
 
         lay.addStretch()
-
-        # Error Tracker Toggle
-        self._err_btn = QPushButton("⚠ 0")
-        self._err_btn.setFixedSize(48, 26)
-        self._err_btn.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
-        self._err_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._err_btn.setToolTip("Toggle Error Tracker")
-        self._err_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent; color: {C.TEXT_DIM};
-                border: 1px solid {C.BORDER}; border-radius: 4px;
-            }}
-            QPushButton:hover {{ color: {C.RED}; border-color: {C.RED_DIM}; }}
-        """)
-        self._err_btn.clicked.connect(self._toggle_error_tracker)
-        lay.addWidget(self._err_btn)
 
         # Status Dots
         for name in ["NEURAL", "SATLINK", "ENCRYPT", "FIREWALL"]:
@@ -1697,8 +1468,8 @@ class MainWindow(QMainWindow):
                     else:
                         pythonw = Path(sys.executable).parent / "pythonw.exe"
                         exe = str(pythonw if pythonw.exists() else sys.executable)
-                        script = str(BASE_DIR / "main.py")
-                        winreg.SetValueEx(key, "FRYDAY_AI", 0, winreg.REG_SZ, f'"{exe}" "{script}"')
+                        script = str(BASE_DIR / "run_microservices.py")
+                        winreg.SetValueEx(key, "DONNA_AI", 0, winreg.REG_SZ, f'"{exe}" "{script}"')
                         self._append_log("SYS: Auto-start on Windows boot enabled.")
                         self._update_autostart_btn(True)
                 finally:
@@ -1737,7 +1508,7 @@ class MainWindow(QMainWindow):
                 lnk = str(desktop / "DONNA.lnk")
                 pythonw = Path(sys.executable).parent / "pythonw.exe"
                 target = str(pythonw if pythonw.exists() else sys.executable)
-                script = str(BASE_DIR / "main.py")
+                script = str(BASE_DIR / "run_microservices.py")
 
                 sh = Dispatch("WScript.Shell")
                 sc = sh.CreateShortCut(lnk)
@@ -2179,31 +1950,7 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    # ── Error Tracker ─────────────────────────────────────────────────────────
 
-    def _toggle_error_tracker(self):
-        if self._error_tracker.isVisible():
-            self._error_tracker.hide()
-        else:
-            # Position near top-right of central widget
-            cw = self.centralWidget()
-            x = (cw.width() - 500) if cw else (self.width() - 500)
-            self._error_tracker.setGeometry(max(x, 20), 50, 480, 320)
-            self._error_tracker.show()
-            self._error_tracker.raise_()
-
-    def _on_error_received(self, severity: str, source: str, message: str, tb: str):
-        self._error_tracker.add_error(severity, source, message, tb)
-        count = self._error_tracker.error_count
-        self._err_btn.setText(f"⚠ {count}")
-        if count > 0:
-            self._err_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: {C.RED_GHO}; color: {C.RED};
-                    border: 1px solid {C.RED_DIM}; border-radius: 4px;
-                }}
-                QPushButton:hover {{ background: rgba(204, 68, 68, 0.2); }}
-            """)
 
     # ── Event Handlers & State Updates ────────────────────────────────────────
 
@@ -2358,10 +2105,10 @@ class MainWindow(QMainWindow):
         os._exit(0)
 
 
-# ── JarvisUI Interface Class Wrapper (Contract with main.py) ──────────────────
+# ── JarvisUI Interface Class Wrapper ──────────────────────────────────────────
 
 class JarvisUI:
-    """High-level thread-safe interface for main.py."""
+    """High-level thread-safe interface for D.O.N.N.A. services."""
 
     def __init__(self, face_path: str = ""):
         self._app = QApplication.instance() or QApplication(sys.argv)
@@ -2434,10 +2181,13 @@ class JarvisUI:
         return self._win._assistant_name
 
     def log_error(self, severity: str, source: str, message: str, traceback_str: str = ""):
-        """Thread-safe: log an error to the Error Tracker panel.
-        severity: 'CRITICAL' | 'ERROR' | 'WARNING'
-        """
-        self._win._error_sig.emit(severity, source, message, traceback_str)
+        """Log an error to Sentry + local console."""
+        print(f"[{severity}] {source}: {message}")
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_message(f"{source}: {message}", level=severity.lower())
+        except Exception:
+            pass
 
     def start_speaking(self):
         self.set_state("SPEAKING")

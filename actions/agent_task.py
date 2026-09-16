@@ -37,10 +37,9 @@ CONFIG_DIR = BASE_DIR / "config"
 API_FILE = CONFIG_DIR / "api_keys.json"
 
 GEMINI_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-1.5-flash",
+    "gemini-3.6-flash",
     "gemini-flash-latest",
+    "gemini-2.5-flash",
 ]
 
 

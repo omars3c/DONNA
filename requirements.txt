@@ -31,3 +31,4 @@ python-docx
 vosk
 qrcode[pil]
 pywin32; sys_platform == "win32"
+sentry-sdk

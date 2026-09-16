@@ -174,7 +174,7 @@ def _summarize_with_gemini(transcript: str, video_url: str) -> str:
     max_chars = 80000
     truncated = transcript[:max_chars] + ("..." if len(transcript) > max_chars else "")
     response = None
-    for m in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]:
+    for m in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
         try:
             response = _client.models.generate_content(
                 model=m,

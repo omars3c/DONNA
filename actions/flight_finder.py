@@ -65,7 +65,7 @@ def _parse_date(raw: str) -> str:
         from google import genai as _genai
         _client  = _genai.Client(api_key=_get_api_key())
         response = None
-        for m in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]:
+        for m in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
             try:
                 response = _client.models.generate_content(
                     model=m,
@@ -176,7 +176,7 @@ def _parse_flights_with_gemini(
 
     try:
         response = None
-        for m in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]:
+        for m in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
             try:
                 response = _client.models.generate_content(
                     model=m,

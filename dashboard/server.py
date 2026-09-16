@@ -117,13 +117,25 @@ def _ensure_network_access(port: int) -> None:
         prog_rule  = "JARVIS Dashboard Python"
         py_exe     = sys.executable
 
+        def _safe_fw_print(msg: str) -> None:
+            try:
+                print(msg)
+            except Exception:
+                pass
+
         def _netsh_rule_exists(name: str) -> bool:
             try:
+                # Capture in binary mode to avoid charmap / cp1251 decode crashes on localized Windows
                 r = subprocess.run(
                     ["netsh", "advfirewall", "firewall", "show", "rule", f"name={name}"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True, timeout=5,
                 )
-                return r.returncode == 0 and "No rules match" not in r.stdout
+                if r.returncode != 0:
+                    return False
+                out = (r.stdout or b"").decode("utf-8", errors="replace")
+                if "No rules match" in out or "не найдены" in out:
+                    return False
+                return name.lower() in out.lower()
             except Exception:
                 return False
 
@@ -134,9 +146,10 @@ def _ensure_network_access(port: int) -> None:
                      "(Get-NetConnectionProfile | "
                      "Where-Object {$_.NetworkCategory -eq 'Public'} | "
                      "Measure-Object).Count"],
-                    capture_output=True, text=True, timeout=6,
+                    capture_output=True, timeout=6,
                 )
-                return r.stdout.strip() not in ("", "0")
+                out = (r.stdout or b"").decode("utf-8", errors="replace").strip()
+                return out not in ("", "0")
             except Exception:
                 return False
 
@@ -187,7 +200,7 @@ def _ensure_network_access(port: int) -> None:
                 [bat_path], capture_output=True, timeout=8, shell=True
             )
             if r.returncode == 0:
-                print(f"[Dashboard] Firewall configured for port {port}.")
+                _safe_fw_print(f"[Dashboard] Firewall configured for port {port}.")
                 try:
                     os.unlink(bat_path)
                 except Exception:
@@ -199,8 +212,8 @@ def _ensure_network_access(port: int) -> None:
         # ── ShellExecuteW: native UAC elevation (most reliable on Windows) ────
         # ShellExecuteW with verb "runas" always shows the UAC dialog regardless
         # of UAC level settings. Non-blocking — uvicorn is already running.
-        print("[Dashboard] One-time network setup required.")
-        print("[Dashboard] >>> A Windows security dialog will appear — click 'Yes' <<<")
+        _safe_fw_print("[Dashboard] One-time network setup required.")
+        _safe_fw_print("[Dashboard] >>> A Windows security dialog will appear — click 'Yes' <<<")
         try:
             ret = ctypes.windll.shell32.ShellExecuteW(
                 None,       # hwnd  (no parent window)
@@ -214,13 +227,13 @@ def _ensure_network_access(port: int) -> None:
                 # ShellExecuteW returns immediately; bat finishes in ~1 second.
                 # Sleep briefly so the rules are in place before the first retry.
                 time.sleep(2)
-                print(f"[Dashboard] Network setup complete — port {port} is open.")
-                print("[Dashboard] Refresh your phone browser to connect.")
+                _safe_fw_print(f"[Dashboard] Network setup complete — port {port} is open.")
+                _safe_fw_print("[Dashboard] Refresh your phone browser to connect.")
             else:
-                print("[Dashboard] Setup was not allowed.")
-                print("[Dashboard] Phone connections may fail until JARVIS is run as Administrator.")
+                _safe_fw_print("[Dashboard] Setup was not allowed.")
+                _safe_fw_print("[Dashboard] Phone connections may fail until JARVIS is run as Administrator.")
         except Exception as e:
-            print(f"[Dashboard] Firewall setup error: {e}")
+            _safe_fw_print(f"[Dashboard] Firewall setup error: {e}")
         finally:
             # Cleanup after the bat has had time to run
             def _cleanup(path: str) -> None:
@@ -622,7 +635,7 @@ class DashboardServer:
                     data = await websocket.receive_bytes()
                     try:
                         self._phone_audio_queue.put_nowait(
-                            {"data": data, "mime_type": "audio/pcm"}
+                            {"data": data, "mime_type": "audio/pcm;rate=16000"}
                         )
                     except asyncio.QueueFull:
                         pass  # drop frame rather than block

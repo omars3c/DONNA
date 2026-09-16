@@ -16,8 +16,8 @@ BASE_DIR         = get_base_dir()
 API_CONFIG_PATH  = BASE_DIR / "config" / "api_keys.json"
 PROJECTS_DIR     = Path.home() / "Desktop" / "JarvisProjects"
 MAX_FIX_ATTEMPTS = 5
-MODEL_PLANNER    = "gemini-2.0-flash"
-MODEL_WRITER     = "gemini-2.0-flash"
+MODEL_PLANNER    = "gemini-3.6-flash"
+MODEL_WRITER     = "gemini-3.6-flash"
 
 def _get_api_key() -> str:
     with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -30,14 +30,14 @@ def _get_model(model_name: str):
 
     class _W:
         def generate_content(self, contents):
-            for m in [model_name, "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]:
+            for m in [model_name, "gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
                 try:
                     resp = _c.models.generate_content(model=m, contents=contents)
                     if resp and resp.text:
                         return resp
                 except Exception:
                     continue
-            return _c.models.generate_content(model="gemini-2.0-flash", contents=contents)
+            return _c.models.generate_content(model="gemini-3.6-flash", contents=contents)
 
     return _W()
 
@@ -119,10 +119,10 @@ Description: {description}
 Return ONLY valid JSON — no markdown, no explanation:
 {{
   "project_name": "snake_case_name",
-  "entry_point": "main.py",
+  "entry_point": "run_microservices.py",
   "files": [
     {{
-      "path": "main.py",
+      "path": "run_microservices.py",
       "description": "Entry point — what it does and which modules it imports",
       "imports": ["utils.helpers", "core.engine"]
     }},
@@ -132,7 +132,7 @@ Return ONLY valid JSON — no markdown, no explanation:
       "imports": []
     }}
   ],
-  "run_command": "python main.py",
+  "run_command": "python run_microservices.py",
   "dependencies": ["requests"]
 }}
 
@@ -473,7 +473,7 @@ def _build_project(
     project_dir.mkdir(parents=True, exist_ok=True)
 
     files        = plan.get("files", [])
-    entry_point  = plan.get("entry_point", "main.py")
+    entry_point  = plan.get("entry_point", "run_microservices.py")
     run_command  = plan.get("run_command", f"python {entry_point}")
     dependencies = plan.get("dependencies", [])
 

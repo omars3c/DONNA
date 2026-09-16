@@ -24,3 +24,8 @@ def get_os() -> str:
 def is_windows() -> bool: return get_os() == "windows"
 def is_mac()     -> bool: return get_os() == "mac"
 def is_linux()   -> bool: return get_os() == "linux"
+
+
+def get_sentry_dsn() -> str:
+    """Return Sentry DSN from config, or empty string."""
+    return get_config().get("sentry_dsn", "")

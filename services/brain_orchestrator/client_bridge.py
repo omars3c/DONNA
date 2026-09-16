@@ -141,9 +141,16 @@ class MicroserviceBridge:
         except Exception as e:
             return f"Windows host agent unavailable: {e}"
 
-    async def computer_control(self, action: str, **kwargs) -> str:
+    async def computer_control(self, *args, **kwargs) -> str:
         client = await self.get_client()
         try:
+            action = "click"
+            if args:
+                action = args[0]
+            elif "action" in kwargs:
+                action = kwargs.pop("action")
+            if "action" in kwargs:
+                kwargs.pop("action")
             payload = {"action": action, **kwargs}
             resp = await client.post(
                 f"{HOST_AGENT_SERVICE_URL}/v1/os/control",

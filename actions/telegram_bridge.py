@@ -177,7 +177,7 @@ class TelegramBridge:
                 client = genai.Client(api_key=self._gemini_key)
                 audio_bytes = voice_file_path.read_bytes()
                 resp = client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model="gemini-3.6-flash",
                     contents=[
                         types.Part.from_bytes(data=audio_bytes, mime_type="audio/ogg"),
                         "Transcribe this voice message accurately in the original language. Output ONLY the transcription text, nothing else.",

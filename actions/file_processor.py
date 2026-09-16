@@ -37,14 +37,14 @@ def _gemini_client():
 
     class _W:
         def generate_content(self, contents):
-            for m in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]:
+            for m in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
                 try:
                     resp = _c.models.generate_content(model=m, contents=contents)
                     if resp and resp.text:
                         return resp
                 except Exception:
                     continue
-            return _c.models.generate_content(model="gemini-2.0-flash", contents=contents)
+            return _c.models.generate_content(model="gemini-3.6-flash", contents=contents)
 
     return _W()
 
