@@ -5,8 +5,9 @@
 #   .\run.ps1 channel       -> start channel_gateway_service on 8000
 #   .\run.ps1 hostagent     -> start windows_host_agent on 8004
 #   .\run.ps1 audio         -> start audio_stream_service on 8005
+#   .\run.ps1 sentinel      -> start sentinel_service on 8006
 #   .\run.ps1 smoke         -> run scripts\smoke_test.py (import check)
-#   .\run.ps1 all           -> start all 6 services as background jobs
+#   .\run.ps1 all           -> start all 7 services as background jobs
 #   .\run.ps1 health        -> curl all /health endpoints
 #   .\run.ps1 stop          -> stop all background jobs started by "all"
 
@@ -30,9 +31,12 @@ switch ($target) {
     "channel"    { python -m uvicorn services.channel_gateway_service.app:app --port 8000 }
     "hostagent"  { python -m uvicorn services.windows_host_agent.app:app --port 8004 }
     "audio"      { python services\audio_stream_service\app.py }
+    "sentinel"   { python -m uvicorn services.sentinel_service.app:app --port 8006 }
     "smoke"      { python scripts\smoke_test.py }
     "all" {
         Write-Host "Starting all services in background..." -ForegroundColor Cyan
+        Start-Job -Name "sentinel"  { Set-Location $using:PWD; .\.venv\Scripts\Activate.ps1; python -m uvicorn services.sentinel_service.app:app --port 8006 }
+        Start-Sleep -Seconds 1
         Start-Job -Name "cortex"    { Set-Location $using:PWD; .\.venv\Scripts\Activate.ps1; python -m uvicorn services.cortex_memory_service.app:app --port 8002 }
         Start-Job -Name "brain"     { Set-Location $using:PWD; .\.venv\Scripts\Activate.ps1; python -m uvicorn services.brain_orchestrator.app:app --port 8001 }
         Start-Job -Name "research"  { Set-Location $using:PWD; .\.venv\Scripts\Activate.ps1; python -m uvicorn services.research_agent_service.app:app --port 8003 }
@@ -52,11 +56,13 @@ switch ($target) {
         Write-Host "All background services stopped." -ForegroundColor Cyan
     }
     "health" {
-        $ports = @{cortex=8002; brain=8001; research=8003; channel=8000; hostagent=8004; audio=8005}
+        $ports = @{sentinel=8006; cortex=8002; brain=8001; research=8003; channel=8000; hostagent=8004; audio=8005}
         foreach ($name in $ports.Keys) {
             $port = $ports[$name]
+            $healthPath = "/health"
+            if ($name -eq "channel") { $healthPath = "/gateway/health" }
             try {
-                $r = Invoke-RestMethod -Uri "http://localhost:$port/health" -TimeoutSec 2
+                $r = Invoke-RestMethod -Uri "http://localhost:$port$healthPath" -TimeoutSec 2
                 $json = $r | ConvertTo-Json -Compress
                 Write-Host "OK   [${name}:${port}] $json" -ForegroundColor Green
             } catch {

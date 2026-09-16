@@ -42,6 +42,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from shared.error_reporter import install_sentinel
+install_sentinel(app, "cortex_memory_service")
+
 
 @app.get("/health")
 def health_check():

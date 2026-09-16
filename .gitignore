@@ -51,3 +51,7 @@ Desktop.ini
 config/api_keys.json
 config/certs/
 memory/cortex.db
+memory/sentinel.db
+memory/sentinel.db-wal
+memory/sentinel.db-shm
+logs/

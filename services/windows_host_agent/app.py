@@ -47,6 +47,9 @@ app.add_middleware(
 
 _monitor = SystemMonitor()
 
+from shared.error_reporter import install_sentinel
+install_sentinel(app, "windows_host_agent")
+
 
 @app.get("/health")
 def health_check():

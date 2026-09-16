@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>D.O.N.N.A. SENTINEL — Мониторинг ошибок</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#040608;--bg2:#060809;--bg3:#0a0d10;--bg4:#0e1215;
+  --border:#1a1e24;--border2:#252a32;
+  --text:#8a929e;--text2:#c0c8d4;--text-dim:#4a5060;
+  --critical:#ff2244;--error:#cc4444;--warning:#d4a820;--info:#3388aa;
+  --up:#22cc66;--down:#ff2244;--unknown:#555;
+  --accent:#cc4444;--accent-dim:#661a22;
+  --font-mono:'Consolas','Courier New',monospace;
+  --font-ui:'Segoe UI','Inter',sans-serif;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:13px;overflow-x:hidden}
+a{color:var(--accent);text-decoration:none}
+
+/* ── Top bar ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.topbar-logo{font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--accent);letter-spacing:2px;text-transform:uppercase}
+.topbar-logo span{color:var(--text-dim);font-weight:400;font-size:11px;margin-left:8px;letter-spacing:0}
+.conn-status{font-size:11px;padding:3px 8px;border-radius:2px;border:1px solid var(--border)}
+.conn-status.ok{color:var(--up);border-color:var(--up)}
+.conn-status.err{color:var(--down);border-color:var(--down);animation:pulse 1.5s infinite}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Service tiles ── */
+.svc-bar{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;padding:10px 16px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.svc-tile{background:var(--bg3);border:1px solid var(--border);padding:8px 10px;text-align:center;position:relative;transition:border-color .3s}
+.svc-tile.up{border-color:var(--up)}
+.svc-tile.down{border-color:var(--down);animation:pulse 1.5s infinite}
+.svc-tile.unknown{border-color:var(--unknown)}
+.svc-name{font-family:var(--font-mono);font-size:11px;color:var(--text2);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.svc-port{font-size:10px;color:var(--text-dim);margin-bottom:4px}
+.svc-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.svc-dot.up{background:var(--up)}
+.svc-dot.down{background:var(--down)}
+.svc-dot.unknown{background:var(--unknown)}
+.svc-label{font-size:10px;font-family:var(--font-mono);vertical-align:middle}
+
+/* ── Toolbar ── */
+.toolbar{display:flex;flex-wrap:wrap;gap:6px;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--border);align-items:center}
+.toolbar select,.toolbar input[type=text]{background:var(--bg3);color:var(--text2);border:1px solid var(--border);padding:5px 8px;font-size:12px;font-family:var(--font-mono);outline:none}
+.toolbar select:focus,.toolbar input:focus{border-color:var(--accent)}
+.toolbar label{font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:4px;cursor:pointer}
+.toolbar input[type=checkbox]{accent-color:var(--accent)}
+.btn{background:var(--bg3);color:var(--text2);border:1px solid var(--border);padding:5px 12px;font-size:12px;font-family:var(--font-mono);cursor:pointer;transition:background .2s,border-color .2s}
+.btn:hover{background:var(--bg4);border-color:var(--accent)}
+.btn-danger{border-color:var(--accent-dim);color:var(--error)}
+.btn-danger:hover{background:var(--accent-dim);border-color:var(--error)}
+.spacer{flex:1}
+
+/* ── Main content ── */
+.main{padding:0 16px 32px}
+
+/* ── Incidents ── */
+.incident{background:var(--bg2);border:1px solid var(--border);margin-top:8px;animation:fadeIn .3s ease}
+.incident-header{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;user-select:none;transition:background .2s}
+.incident-header:hover{background:var(--bg3)}
+.incident-sev{font-family:var(--font-mono);font-size:11px;font-weight:700;padding:2px 6px;border-radius:1px;min-width:64px;text-align:center}
+.sev-CRITICAL{background:rgba(255,34,68,.15);color:var(--critical);border:1px solid rgba(255,34,68,.3)}
+.sev-ERROR{background:rgba(204,68,68,.12);color:var(--error);border:1px solid rgba(204,68,68,.25)}
+.sev-WARNING{background:rgba(212,168,32,.1);color:var(--warning);border:1px solid rgba(212,168,32,.2)}
+.sev-INFO{background:rgba(51,136,170,.1);color:var(--info);border:1px solid rgba(51,136,170,.2)}
+.incident-time{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);min-width:70px}
+.incident-services{font-size:11px;color:var(--text)}
+.incident-services code{background:var(--bg4);padding:1px 5px;margin:0 2px;font-family:var(--font-mono);font-size:10px;border:1px solid var(--border);color:var(--text2)}
+.incident-count{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-left:auto}
+.incident-root{font-size:11px;color:var(--warning);margin-left:8px;max-width:400px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.incident-arrow{color:var(--text-dim);font-size:10px;transition:transform .2s}
+.incident-arrow.open{transform:rotate(90deg)}
+
+.incident-body{display:none;border-top:1px solid var(--border);padding:0}
+.incident-body.open{display:block}
+
+.evt-row{display:flex;gap:8px;padding:6px 12px;border-bottom:1px solid var(--border);align-items:flex-start;font-size:12px}
+.evt-row:last-child{border-bottom:none}
+.evt-time{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);min-width:70px;flex-shrink:0}
+.evt-sev{font-family:var(--font-mono);font-size:10px;font-weight:700;min-width:55px;flex-shrink:0}
+.evt-svc{font-family:var(--font-mono);font-size:11px;color:var(--info);min-width:120px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evt-src{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);min-width:100px;flex-shrink:0}
+.evt-msg{color:var(--text2);flex:1;word-break:break-word}
+.evt-tb-toggle{font-size:10px;color:var(--accent);cursor:pointer;margin-left:8px;white-space:nowrap;flex-shrink:0}
+.evt-tb{display:none;background:var(--bg);padding:8px 12px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);white-space:pre-wrap;word-break:break-all;border-top:1px solid var(--border);max-height:300px;overflow-y:auto}
+.evt-tb.open{display:block}
+
+.root-marker{color:var(--critical);font-weight:700;margin-left:4px;font-size:10px}
+
+/* ── Empty state ── */
+.empty{text-align:center;padding:60px 20px;color:var(--text-dim);font-size:14px}
+.empty .icon{font-size:40px;margin-bottom:12px}
+
+/* ── Confirm dialog ── */
+.overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center}
+.overlay.show{display:flex}
+.dialog{background:var(--bg2);border:1px solid var(--border2);padding:24px;max-width:360px;text-align:center}
+.dialog p{color:var(--text2);margin-bottom:16px;font-size:13px}
+.dialog-btns{display:flex;gap:8px;justify-content:center}
+
+/* ── Responsive ── */
+@media(max-width:800px){
+  .svc-bar{grid-template-columns:repeat(3,1fr)}
+  .incident-root{display:none}
+  .evt-svc{min-width:80px}
+  .evt-src{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <div class="topbar-logo">D.O.N.N.A. SENTINEL<span>Мониторинг ошибок</span></div>
+  <div id="connStatus" class="conn-status err">⊘ Нет связи</div>
+</div>
+
+<!-- Service Tiles -->
+<div class="svc-bar" id="svcBar">
+  <div class="svc-tile unknown" id="tile-channel_gateway_service">
+    <div class="svc-name">GATEWAY</div>
+    <div class="svc-port">:8000</div>
+    <span class="svc-dot unknown"></span><span class="svc-label">—</span>
+  </div>
+  <div class="svc-tile unknown" id="tile-brain_orchestrator">
+    <div class="svc-name">BRAIN</div>
+    <div class="svc-port">:8001</div>
+    <span class="svc-dot unknown"></span><span class="svc-label">—</span>
+  </div>
+  <div class="svc-tile unknown" id="tile-cortex_memory_service">
+    <div class="svc-name">CORTEX</div>
+    <div class="svc-port">:8002</div>
+    <span class="svc-dot unknown"></span><span class="svc-label">—</span>
+  </div>
+  <div class="svc-tile unknown" id="tile-research_agent_service">
+    <div class="svc-name">RESEARCH</div>
+    <div class="svc-port">:8003</div>
+    <span class="svc-dot unknown"></span><span class="svc-label">—</span>
+  </div>
+  <div class="svc-tile unknown" id="tile-windows_host_agent">
+    <div class="svc-name">HOST AGENT</div>
+    <div class="svc-port">:8004</div>
+    <span class="svc-dot unknown"></span><span class="svc-label">—</span>
+  </div>
+  <div class="svc-tile unknown" id="tile-audio_stream_service">
+    <div class="svc-name">AUDIO</div>
+    <div class="svc-port">:8005</div>
+    <span class="svc-dot unknown"></span><span class="svc-label">—</span>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <select id="filterSvc">
+    <option value="">Все сервисы</option>
+    <option value="channel_gateway_service">Gateway</option>
+    <option value="brain_orchestrator">Brain</option>
+    <option value="cortex_memory_service">Cortex</option>
+    <option value="research_agent_service">Research</option>
+    <option value="windows_host_agent">Host Agent</option>
+    <option value="audio_stream_service">Audio</option>
+  </select>
+  <select id="filterSev">
+    <option value="">Все уровни</option>
+    <option value="CRITICAL">CRITICAL</option>
+    <option value="ERROR">ERROR</option>
+    <option value="WARNING">WARNING</option>
+    <option value="INFO">INFO</option>
+  </select>
+  <input type="text" id="filterSearch" placeholder="Поиск по тексту..." style="width:180px">
+  <label><input type="checkbox" id="filterGroup"> Группировать</label>
+  <div class="spacer"></div>
+  <button class="btn" id="btnRefresh" title="Обновить">↻ Обновить</button>
+  <button class="btn btn-danger" id="btnClear" title="Очистить всё">✕ Очистить</button>
+</div>
+
+<!-- Main content -->
+<div class="main" id="mainContent">
+  <div class="empty" id="emptyState">
+    <div class="icon">◉</div>
+    Ошибок нет. Sentinel слушает шесть сервисов.
+  </div>
+</div>
+
+<!-- Confirm dialog -->
+<div class="overlay" id="confirmOverlay">
+  <div class="dialog">
+    <p>Удалить все ошибки и инциденты?<br>Это действие необратимо.</p>
+    <div class="dialog-btns">
+      <button class="btn btn-danger" id="btnConfirmYes">Удалить</button>
+      <button class="btn" id="btnConfirmNo">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const API = window.location.origin;
+  const WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/errors";
+
+  // ── State ──
+  let incidents = [];  // IncidentSummary[]
+  let ws = null;
+  let reconnectTimer = null;
+
+  // ── DOM refs ──
+  const $main = document.getElementById("mainContent");
+  const $empty = document.getElementById("emptyState");
+  const $connStatus = document.getElementById("connStatus");
+  const $filterSvc = document.getElementById("filterSvc");
+  const $filterSev = document.getElementById("filterSev");
+  const $filterSearch = document.getElementById("filterSearch");
+  const $filterGroup = document.getElementById("filterGroup");
+  const $btnRefresh = document.getElementById("btnRefresh");
+  const $btnClear = document.getElementById("btnClear");
+  const $overlay = document.getElementById("confirmOverlay");
+  const $confirmYes = document.getElementById("btnConfirmYes");
+  const $confirmNo = document.getElementById("btnConfirmNo");
+
+  // ── Helpers ──
+  function fmtTime(ts) {
+    if (!ts) return "—";
+    const d = new Date(ts * 1000);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+    return hh + ":" + mm + ":" + ss;
+  }
+
+  function fmtDate(ts) {
+    if (!ts) return "";
+    const d = new Date(ts * 1000);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    return dd + "." + mo + " " + fmtTime(ts);
+  }
+
+  function escHtml(s) {
+    if (!s) return "";
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // ── Service tiles ──
+  function updateTile(name, status) {
+    const tile = document.getElementById("tile-" + name);
+    if (!tile) return;
+    tile.className = "svc-tile " + (status || "unknown").toLowerCase();
+    const dot = tile.querySelector(".svc-dot");
+    const label = tile.querySelector(".svc-label");
+    if (dot) dot.className = "svc-dot " + (status || "unknown").toLowerCase();
+    if (label) label.textContent = status || "—";
+  }
+
+  // ── Load incidents ──
+  async function loadIncidents() {
+    const params = new URLSearchParams();
+    if ($filterSvc.value) params.set("service", $filterSvc.value);
+    if ($filterSev.value) params.set("severity", $filterSev.value);
+    if ($filterSearch.value) params.set("search", $filterSearch.value);
+
+    try {
+      const resp = await fetch(API + "/v1/incidents?limit=100");
+      if (!resp.ok) throw new Error(resp.status);
+      const data = await resp.json();
+      incidents = data.incidents || [];
+      renderIncidents();
+    } catch(e) {
+      console.error("Failed to load incidents", e);
+    }
+
+    // Load stats for service tiles
+    try {
+      const resp = await fetch(API + "/v1/stats");
+      if (resp.ok) {
+        const stats = await resp.json();
+        if (stats.service_statuses) {
+          for (const [name, info] of Object.entries(stats.service_statuses)) {
+            updateTile(name, info.status);
+          }
+        }
+      }
+    } catch(e) {}
+  }
+
+  // ── Render ──
+  function renderIncidents() {
+    // Filter incidents client-side
+    let filtered = incidents;
+    if ($filterSvc.value) {
+      filtered = filtered.filter(inc => inc.services && inc.services.includes($filterSvc.value));
+    }
+    if ($filterSev.value) {
+      filtered = filtered.filter(inc => inc.severity === $filterSev.value);
+    }
+
+    // Clear existing incident elements (keep empty state)
+    const existing = $main.querySelectorAll(".incident");
+    existing.forEach(el => el.remove());
+
+    if (filtered.length === 0) {
+      $empty.style.display = "block";
+      return;
+    }
+    $empty.style.display = "none";
+
+    for (const inc of filtered) {
+      const el = document.createElement("div");
+      el.className = "incident";
+      el.dataset.id = inc.incident_id;
+
+      const svcs = (inc.services || []).map(s => "<code>" + escHtml(s) + "</code>").join(" ");
+      const rootMsg = inc.root_cause ? escHtml(inc.root_cause.message).substring(0, 80) : "";
+      const rootSrc = inc.root_cause ? escHtml(inc.root_cause.source) : "";
+
+      el.innerHTML = `
+        <div class="incident-header" onclick="window.__toggleInc('${inc.incident_id}', this)">
+          <span class="incident-arrow" data-arrow="${inc.incident_id}">▶</span>
+          <span class="incident-sev sev-${inc.severity}">${inc.severity}</span>
+          <span class="incident-time">${fmtDate(inc.started_ts)}</span>
+          <span class="incident-services">${svcs}</span>
+          <span class="incident-root" title="${rootSrc}: ${rootMsg}">⚡ ${rootSrc}: ${rootMsg}</span>
+          <span class="incident-count">${inc.error_count} событ.</span>
+        </div>
+        <div class="incident-body" id="inc-body-${inc.incident_id}"></div>
+      `;
+      $main.appendChild(el);
+    }
+  }
+
+  // ── Toggle incident ──
+  window.__toggleInc = async function(id, headerEl) {
+    const body = document.getElementById("inc-body-" + id);
+    const arrow = document.querySelector(`[data-arrow="${id}"]`);
+    if (!body) return;
+
+    if (body.classList.contains("open")) {
+      body.classList.remove("open");
+      if (arrow) arrow.classList.remove("open");
+      return;
+    }
+
+    // Load incident detail
+    try {
+      const resp = await fetch(API + "/v1/incidents/" + id);
+      if (!resp.ok) throw new Error(resp.status);
+      const data = await resp.json();
+      renderIncidentDetail(body, data);
+      body.classList.add("open");
+      if (arrow) arrow.classList.add("open");
+    } catch(e) {
+      body.innerHTML = '<div class="evt-row" style="color:var(--error)">Ошибка загрузки</div>';
+      body.classList.add("open");
+    }
+  };
+
+  function renderIncidentDetail(container, data) {
+    const events = data.events || [];
+    const rootId = data.root_cause ? data.root_cause.id : null;
+    let html = "";
+
+    for (const evt of events) {
+      const isRoot = evt.id === rootId;
+      const sevClass = "sev-" + evt.severity;
+      const tbId = "tb-" + evt.id;
+      const hasTb = evt.traceback && evt.traceback.trim().length > 0;
+
+      html += `<div class="evt-row">
+        <span class="evt-time">${fmtTime(evt.ts)}</span>
+        <span class="evt-sev ${sevClass}">${evt.severity}</span>
+        <span class="evt-svc">${escHtml(evt.service)}</span>
+        <span class="evt-src">${escHtml(evt.source)}</span>
+        <span class="evt-msg">${escHtml(evt.message)}${isRoot ? '<span class="root-marker">◀ ПЕРВОПРИЧИНА</span>' : ''}</span>
+        ${hasTb ? `<span class="evt-tb-toggle" onclick="document.getElementById('${tbId}').classList.toggle('open')">traceback</span>` : ''}
+      </div>`;
+      if (hasTb) {
+        html += `<div class="evt-tb" id="${tbId}">${escHtml(evt.traceback)}</div>`;
+      }
+    }
+
+    if (events.length === 0) {
+      html = '<div class="evt-row" style="color:var(--text-dim)">Нет событий</div>';
+    }
+
+    // Apply text search filter highlight
+    if ($filterSearch.value) {
+      const term = escHtml($filterSearch.value);
+      const re = new RegExp("(" + term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi");
+      html = html.replace(re, '<mark style="background:var(--warning);color:#000;padding:0 1px">$1</mark>');
+    }
+
+    container.innerHTML = html;
+  }
+
+  // ── WebSocket ──
+  function connectWS() {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
+    try {
+      ws = new WebSocket(WS_URL);
+    } catch(e) {
+      scheduleReconnect();
+      return;
+    }
+
+    ws.onopen = function() {
+      $connStatus.className = "conn-status ok";
+      $connStatus.textContent = "● Подключено";
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    };
+
+    ws.onclose = function() {
+      $connStatus.className = "conn-status err";
+      $connStatus.textContent = "⊘ Нет связи";
+      scheduleReconnect();
+    };
+
+    ws.onerror = function() {
+      ws.close();
+    };
+
+    ws.onmessage = function(e) {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === "status") {
+          updateTile(msg.service, msg.status);
+        } else if (msg.type === "error") {
+          // Reload incidents to include new data
+          loadIncidents();
+        }
+      } catch(err) {}
+    };
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(function() {
+      reconnectTimer = null;
+      connectWS();
+    }, 3000);
+  }
+
+  // ── Events ──
+  $btnRefresh.addEventListener("click", loadIncidents);
+
+  $btnClear.addEventListener("click", function() {
+    $overlay.classList.add("show");
+  });
+  $confirmNo.addEventListener("click", function() {
+    $overlay.classList.remove("show");
+  });
+  $confirmYes.addEventListener("click", async function() {
+    $overlay.classList.remove("show");
+    try {
+      await fetch(API + "/v1/errors", { method: "DELETE" });
+      incidents = [];
+      renderIncidents();
+    } catch(e) {
+      alert("Ошибка при очистке");
+    }
+  });
+
+  let filterTimer = null;
+  function debouncedLoad() {
+    if (filterTimer) clearTimeout(filterTimer);
+    filterTimer = setTimeout(loadIncidents, 300);
+  }
+  $filterSvc.addEventListener("change", loadIncidents);
+  $filterSev.addEventListener("change", loadIncidents);
+  $filterSearch.addEventListener("input", debouncedLoad);
+  $filterGroup.addEventListener("change", loadIncidents);
+
+  // ── Init ──
+  connectWS();
+  loadIncidents();
+})();
+</script>
+</body>
+</html>
