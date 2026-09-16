@@ -1,7 +1,8 @@
 """
 run_microservices.py — D.O.N.N.A. Unified Microservices Orchestrator
 
-Launches and supervises all 6 microservices as isolated processes:
+Launches and supervises all 7 microservices as isolated processes:
+  [0] Sentinel Service          (:8006)  ← starts first to catch startup errors
   [1] Cortex Memory Service     (:8002)
   [2] Research Agent Service    (:8003)
   [3] Windows Host Agent        (:8004)
@@ -27,6 +28,12 @@ from typing import Dict, List
 BASE_DIR = Path(__file__).resolve().parent
 
 SERVICES = [
+    {
+        "name": "SENTINEL",
+        "module": "services.sentinel_service.app",
+        "port": 8006,
+        "color": "\033[31;1m",  # Bright Red
+    },
     {
         "name": "CORTEX",
         "module": "services.cortex_memory_service.app",
@@ -77,7 +84,10 @@ class MicroserviceRunner:
         self.running = True
 
     def _stream_output(self, name: str, color: str, pipe):
+        """Stream child process stdout to console with optional Sentinel scraping."""
         prefix = f"{color}[{name:8}]{RESET_COLOR} "
+        _ERROR_MARKERS = ("Traceback", "ERROR", "CRITICAL", "Exception", "Failed")
+        _is_sentinel = (name == "SENTINEL")
         try:
             for line in iter(pipe.readline, ""):
                 if not line:
@@ -85,6 +95,25 @@ class MicroserviceRunner:
                 clean = line.rstrip("\r\n")
                 if clean:
                     print(f"{prefix}{clean}")
+                    # Stdout scraper: forward error-like lines to Sentinel
+                    if not _is_sentinel:
+                        try:
+                            if any(m in clean for m in _ERROR_MARKERS):
+                                import requests as _req
+                                import time as _time
+                                _req.post(
+                                    "http://127.0.0.1:8006/v1/errors",
+                                    json={
+                                        "service": name.lower(),
+                                        "severity": "ERROR",
+                                        "source": "stdout_scrape",
+                                        "message": clean[:2000],
+                                        "ts": _time.time(),
+                                    },
+                                    timeout=1,
+                                )
+                        except Exception:
+                            pass
         except Exception:
             pass
 

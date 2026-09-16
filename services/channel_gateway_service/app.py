@@ -9,8 +9,10 @@ from pathlib import Path
 
 if sys.platform == "win32":
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        for _stream in (sys.stdout, sys.stderr):
+            _reconf = getattr(_stream, "reconfigure", None)
+            if callable(_reconf):
+                _reconf(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
@@ -42,6 +44,7 @@ class ChannelGatewayService:
             print(f"[ChannelGateway] Forwarded command to Brain: '{text[:50]}'")
         except Exception as e:
             print(f"[ChannelGateway] Failed to forward command to Brain: {e}")
+            report("ERROR", "forward_command", str(e))
 
     async def _process_dashboard_commands(self):
         while True:
@@ -63,6 +66,7 @@ class ChannelGatewayService:
                     await self._forward_command_to_brain(msg)
             except Exception as e:
                 print(f"[ChannelGateway] Monitor check error: {e}")
+                report_exception("rss_monitor", e)
 
     async def start(self):
         self._loop = asyncio.get_running_loop()
@@ -85,6 +89,9 @@ class ChannelGatewayService:
 
 gateway_svc = ChannelGatewayService()
 app = gateway_svc.dashboard.app
+
+from shared.error_reporter import install_sentinel, report, report_exception
+install_sentinel(app, "channel_gateway_service")
 
 
 @app.get("/gateway/health")

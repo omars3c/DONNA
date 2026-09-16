@@ -71,6 +71,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from shared.error_reporter import install_sentinel, report, report_exception
+install_sentinel(app, "brain_orchestrator")
+
 LIVE_MODEL = "gemini-3.1-flash-live-preview"
 PROMPT_PATH = ROOT_DIR / "core" / "prompt.txt"
 
@@ -325,6 +328,7 @@ class BrainOrchestrator:
         except Exception as e:
             result = f"Error executing tool '{name}': {e}"
             traceback.print_exc()
+            report_exception("tool_dispatch", e, tool=name)
 
         print(f"[Brain] 📤 Tool Result: {result[:80]}")
         await self.broadcast_hud({"type": "content", "title": f"TOOL: {name.upper()}", "text": result})
@@ -414,6 +418,7 @@ class BrainOrchestrator:
                                     )
                                 except Exception as e:
                                     print(f"[Brain] Gemini session dead, forcing reconnect: {e}")
+                                    report_exception("gemini_session", e, action="send_audio")
                                     raise  # пробрасываем наружу, чтобы сработал внешний reconnect-цикл
 
                     async def receive_gemini_loop():
@@ -441,6 +446,7 @@ class BrainOrchestrator:
                                                 await self.audio_client.send_json({"type": "audio", "data": b64})
                                             except Exception as e:
                                                 print(f"[Brain] Error sending audio to AudioService: {e}")
+                                                report("WARNING", "audio_playback", str(e))
 
                                 if response.server_content:
                                     sc = response.server_content
@@ -483,6 +489,7 @@ class BrainOrchestrator:
                                         await session.send_tool_response(function_responses=fn_responses)
                                     except Exception as e:
                                         print(f"[Brain] Error sending tool response: {e}")
+                                        report("ERROR", "tool_dispatch", f"Failed to send tool response: {e}")
 
                     async def inactivity_watchdog():
                         while True:
@@ -498,6 +505,7 @@ class BrainOrchestrator:
 
             except Exception as e:
                 print(f"[Brain] Session connection dropped: {e}. Reconnecting in 3s...")
+                report_exception("gemini_session", e, model=LIVE_MODEL)
                 self.session = None
                 self.set_state("STANDBY")
                 await asyncio.sleep(3)

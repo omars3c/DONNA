@@ -11,11 +11,14 @@ import base64
 import asyncio
 import collections
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 if sys.platform == "win32":
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        for _stream in (sys.stdout, sys.stderr):
+            _reconf = getattr(_stream, "reconfigure", None)
+            if callable(_reconf):
+                _reconf(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
@@ -32,20 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from shared.config import AUDIO_PORT, AUDIO_HOST, BRAIN_HOST, BRAIN_PORT
 from core.wakeword import OfflineWakeWordEngine
 from core.sfx import sfx
-
-app = FastAPI(
-    title="DONNA Audio Stream Service",
-    description="Microphone Capture, Speaker Playback, Vosk Wake Word & Barge-In",
-    version="2.0.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+from shared.error_reporter import install_sentinel, report, report_exception
 
 INPUT_SAMPLE_RATE = 16000
 OUTPUT_SAMPLE_RATE = 24000
@@ -114,7 +104,7 @@ class AudioDaemon:
         if self.speaking_active:
             # During speaking: check for barge-in stop words only (e.g. "стоп", "хватит", "тихо")
             matched, phrase = self.wake_engine.process_interrupt_audio(pcm_raw)
-            if matched:
+            if matched and self.wake_engine.on_interrupt:
                 self.wake_engine.on_interrupt(phrase)
             # CRITICAL: Return immediately! Never process wake words or forward mic audio to Gemini while speaking!
             return
@@ -190,6 +180,7 @@ class AudioDaemon:
                         return
                     except Exception as stream_err:
                         print(f"[AudioService] ⚠️ Audio stream error: {stream_err}")
+                        report("WARNING", "audio_playback", str(stream_err))
                         break
 
                     self._speaking_until = time.monotonic() + 0.3
@@ -198,6 +189,7 @@ class AudioDaemon:
                 break
             except Exception as e:
                 print(f"[AudioService] Playback stream error: {e}. Reopening in 1s...")
+                report_exception("audio_playback", e)
                 self.is_speaking = False
                 self._speaking_until = 0.0
                 if self.out_stream:
@@ -261,6 +253,7 @@ class AudioDaemon:
 
             except Exception as e:
                 print(f"[AudioService] Brain connection lost: {e}. Reconnecting in 3s...")
+                report("ERROR", "brain_connection", str(e))
                 self.ws = None
                 await asyncio.sleep(3)
 
@@ -268,19 +261,8 @@ class AudioDaemon:
 daemon = AudioDaemon()
 
 
-@app.get("/health")
-def health():
-    return {
-        "status": "healthy",
-        "service": "audio_stream_service",
-        "port": AUDIO_PORT,
-        "is_active": daemon.is_active,
-        "is_speaking": daemon.is_speaking,
-    }
-
-
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI):
     daemon._loop = asyncio.get_running_loop()
     asyncio.create_task(daemon.connect_to_brain())
     asyncio.create_task(daemon.playback_worker())
@@ -298,10 +280,10 @@ async def startup_event():
         print("[AudioService] Microphone stream active (16kHz Mono).")
     except Exception as e:
         print(f"[AudioService] Could not open microphone: {e}")
+        report_exception("mic_capture", e)
 
+    yield
 
-@app.on_event("shutdown")
-async def shutdown_event():
     if daemon.mic_stream:
         try:
             daemon.mic_stream.stop()
@@ -314,6 +296,35 @@ async def shutdown_event():
             daemon.out_stream.close()
         except Exception:
             pass
+
+
+app = FastAPI(
+    title="DONNA Audio Stream Service",
+    description="Microphone Capture, Speaker Playback, Vosk Wake Word & Barge-In",
+    version="2.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+install_sentinel(app, "audio_stream_service")
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+        "service": "audio_stream_service",
+        "port": AUDIO_PORT,
+        "is_active": daemon.is_active,
+        "is_speaking": daemon.is_speaking,
+    }
 
 
 if __name__ == "__main__":
