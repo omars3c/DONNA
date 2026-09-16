@@ -4,13 +4,63 @@ import subprocess
 import platform
 import shutil
 
+import re
+from dataclasses import dataclass
+from typing import Optional
+
 try:
-    import psutil
+    from shared.error_reporter import report
+except Exception:
+    def report(*args, **kwargs):
+        pass
+
+from actions.dialog_watchdog import watch_for_dialog, snapshot_windows
+
+try:
+    import psutil  # type: ignore
     _PSUTIL = True
 except ImportError:
     _PSUTIL = False
 
 _SYSTEM = platform.system()
+
+
+@dataclass
+class LaunchResult:
+    ok: bool
+    confirmed: bool = False
+    detail: str = ""
+
+
+def _extract_exe_from_command(cmd_str: str) -> Optional[str]:
+    if not cmd_str:
+        return None
+    cmd_str = cmd_str.strip()
+    if cmd_str.startswith('"'):
+        end = cmd_str.find('"', 1)
+        if end != -1:
+            exe = cmd_str[1:end].strip()
+            if exe:
+                return exe
+    match = re.search(r'([a-zA-Z]:\\[^"]+?\.exe)', cmd_str, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    parts = cmd_str.split()
+    return parts[0] if parts else None
+
+
+def _get_protocol_handler_exe(protocol: str) -> Optional[str]:
+    try:
+        import winreg
+        key_path = rf"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\{protocol}\UserChoice"
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as k:
+            prog_id, _ = winreg.QueryValueEx(k, "ProgId")
+        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, rf"{prog_id}\shell\open\command") as k:
+            cmd_str, _ = winreg.QueryValueEx(k, "")
+        return _extract_exe_from_command(cmd_str)
+    except Exception:
+        return None
+
 
 def _normalize(raw: str) -> str:
     """Dynamic cross-language normalizer without static dictionaries."""
@@ -29,24 +79,78 @@ def _normalize(raw: str) -> str:
     }
     return "".join(_trans_map.get(c, c) for c in key.lower())
 
-def _launch_windows(app_name: str) -> bool:
-    """Non-blocking, dynamic Windows application launcher."""
-    # 1. Native Windows Shell Start (resolves Windows App Paths, PATH, Registry, URIs)
-    try:
-        subprocess.Popen(f'start "" "{app_name}"', shell=True)
-        return True
-    except Exception:
-        pass
 
-    # 2. Direct binary lookup
-    if shutil.which(app_name) or shutil.which(app_name.split(".")[0]):
+def _resolve_generic_category(name: str) -> Optional[str]:
+    """
+    Resolves generic categories (browser, email, explorer) via Windows Registry or OS constants.
+    Returns executable path or None. Does not affect specific application names.
+    """
+    if _SYSTEM != "Windows":
+        return None
+
+    raw = name.strip().lower()
+    norm = _normalize(name).strip().lower()
+
+    # Browser
+    browser_terms = {"browser", "браузер", "brauzer"}
+    if raw in browser_terms or norm in browser_terms:
+        exe = _get_protocol_handler_exe("http")
+        if exe:
+            return exe
+
+    # Email
+    email_terms = {"email", "mail", "почта", "pochta", "pocta"}
+    if raw in email_terms or norm in email_terms:
+        exe = _get_protocol_handler_exe("mailto")
+        if exe:
+            return exe
+
+    # Explorer / File manager
+    explorer_terms = {"explorer", "file manager", "filemanager", "проводник", "provodnik"}
+    if raw in explorer_terms or norm in explorer_terms:
+        return "explorer.exe"
+
+    return None
+
+
+def _launch_windows(app_name: str) -> LaunchResult:
+    """
+    Hierarchical non-blocking Windows launcher:
+    1. Generic category resolution -> os.startfile / Popen (confirmed=True)
+    2. Direct binary lookup -> Popen([binary]) (confirmed=True)
+    3. Blind shell start -> cmd start (confirmed=False)
+    """
+    # 1. Generic category resolution
+    cat_path = _resolve_generic_category(app_name)
+    if cat_path:
+        if hasattr(os, "startfile"):
+            try:
+                os.startfile(cat_path)
+                return LaunchResult(ok=True, confirmed=True, detail=f"Category resolved to {cat_path}")
+            except Exception:
+                pass
         try:
-            subprocess.Popen(app_name, shell=True)
-            return True
+            subprocess.Popen([cat_path])
+            return LaunchResult(ok=True, confirmed=True, detail=f"Category Popen launched {cat_path}")
         except Exception:
             pass
 
-    return False
+    # 2. Direct binary lookup
+    binary = shutil.which(app_name) or shutil.which(app_name.split(".")[0])
+    target = binary or (app_name if os.path.isfile(app_name) else None)
+    if target:
+        try:
+            subprocess.Popen([target])
+            return LaunchResult(ok=True, confirmed=True, detail=f"Binary launched: {target}")
+        except Exception:
+            pass
+
+    # 3. Fallback: blind shell start (unconfirmed)
+    try:
+        subprocess.Popen(f'start "" "{app_name}"', shell=True)
+        return LaunchResult(ok=True, confirmed=False, detail=f"Shell start invoked for {app_name}")
+    except Exception as e:
+        return LaunchResult(ok=False, confirmed=False, detail=str(e))
 
 
 def _launch_macos(app_name: str) -> bool:
@@ -87,7 +191,7 @@ def _launch_macos(app_name: str) -> bool:
             pass
 
     try:
-        import pyautogui
+        import pyautogui  # type: ignore
         pyautogui.hotkey("command", "space")
         time.sleep(0.6)
         pyautogui.write(app_name, interval=0.05)
@@ -170,6 +274,15 @@ _OS_LAUNCHERS = {
     "Linux":   _launch_linux,
 }
 
+def _invoke_launcher(launcher, target: str) -> LaunchResult:
+    res = launcher(target)
+    if isinstance(res, LaunchResult):
+        return res
+    if bool(res):
+        return LaunchResult(ok=True, confirmed=True, detail=f"Launched {target}")
+    return LaunchResult(ok=False, confirmed=False, detail=f"Failed to launch {target}")
+
+
 def open_app(
     parameters=None,
     response=None,
@@ -192,15 +305,54 @@ def open_app(
         player.write_log(f"[open_app] {app_name}")
 
     try:
-        if launcher(normalized):
+        # Snapshot windows before launch attempt
+        before_hwnds = snapshot_windows()
+
+        result = _invoke_launcher(launcher, normalized)
+        if not result.ok and normalized.lower() != app_name.lower():
+            result = _invoke_launcher(launcher, app_name)
+
+        if result.ok and result.confirmed:
             return f"Opened {app_name}."
-        if normalized.lower() != app_name.lower():
-            if launcher(app_name):
-                return f"Opened {app_name}."
+
+        if result.ok and not result.confirmed:
+            # Fallback blind launch (step 3) was used: check for newly spawned error dialog
+            dialog_text = watch_for_dialog(timeout_sec=2.0, before_hwnds=before_hwnds)
+            if dialog_text:
+                report(
+                    severity="ERROR",
+                    source="open_app_dialog_detect",
+                    message=dialog_text,
+                    context={"app_name": app_name, "normalized": normalized},
+                )
+                return f"Failed to open {app_name}: {dialog_text}"
+
+            report(
+                severity="WARNING",
+                source="open_app",
+                message=f"Unconfirmed launch: {app_name}",
+                context={"app_name": app_name, "normalized": normalized},
+            )
+            return f"Started a launch attempt for {app_name}, but could not confirm it opened."
+
+        # Total failure: nothing succeeded
+        err_detail = result.detail or "Could not confirm that application launched"
+        report(
+            severity="ERROR",
+            source="open_app",
+            message=f"Failed to open {app_name}: {err_detail}",
+            context={"app_name": app_name, "normalized": normalized},
+        )
         return (
             f"Could not confirm that {app_name} launched. "
             f"It may still be loading, or it might not be installed."
         )
     except Exception as e:
         print(f"[open_app] Error: {e}")
+        report(
+            severity="ERROR",
+            source="open_app",
+            message=f"Failed to open {app_name}: {e}",
+            context={"app_name": app_name, "normalized": normalized},
+        )
         return f"Failed to open {app_name}: {e}"

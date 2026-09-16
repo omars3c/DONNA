@@ -116,6 +116,10 @@ def report(
             except Exception:
                 tb_str = str(exc)
 
+        ctx = context
+        if "context" in context and len(context) == 1 and isinstance(context["context"], dict):
+            ctx = context["context"]
+
         payload = {
             "service": _service_name,
             "severity": severity,
@@ -123,7 +127,7 @@ def report(
             "message": message[:4000],
             "traceback": tb_str[:8000] if tb_str else None,
             "correlation_id": cid,
-            "context": context if context else None,
+            "context": ctx if ctx else None,
             "ts": time.time(),
         }
 
