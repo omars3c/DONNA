@@ -10,6 +10,7 @@ Supports:
 """
 
 from __future__ import annotations
+import secrets
 
 import os
 import sys
@@ -54,6 +55,7 @@ class TelegramBridge:
         self._last_update_id: int = 0
         self._on_message_callback: Optional[Callable] = None
         self._gemini_key: str = cfg.get("gemini_api_key", "")
+        self._pairing_code: str = secrets.token_hex(3).upper()
 
     @classmethod
     def get_instance(cls) -> TelegramBridge:
@@ -197,6 +199,10 @@ class TelegramBridge:
             return
 
         print("[TelegramBridge] Connected and polling for updates...")
+        if not self.owner_id:
+            print(f"\n[TelegramBridge] ⚠️ NO OPERATOR PAIRED!")
+            print(f"[TelegramBridge] 🔑 PAIRING OTP CODE: {self._pairing_code}")
+            print(f"[TelegramBridge] Send '/pair {self._pairing_code}' in Telegram to link your account.\n")
         self._running = True
 
         while self._running:
@@ -215,18 +221,32 @@ class TelegramBridge:
                         text = msg.get("text", "")
                         voice = msg.get("voice") or msg.get("audio")
 
-                        # Pairing logic: if no owner is set, pair on /start or first command
+                        # Pairing logic: if no owner is set, require explicit OTP command
                         if not self.owner_id:
-                            self.owner_id = chat_id
-                            cfg = _load_config()
-                            cfg["telegram_owner_id"] = chat_id
-                            _save_config(cfg)
-                            await self.send_message(
-                                f"🛡️ *D.O.N.N.A. TACTICAL OS CONNECTED*\n"
-                                f"Device paired successfully with Operator: @{username} (ID: `{chat_id}`).\n"
-                                f"You can now send text or voice commands from anywhere.",
-                                chat_id=chat_id
-                            )
+                            cleaned = (text or "").strip()
+                            if cleaned.upper().startswith("/PAIR") and self._pairing_code in cleaned.upper():
+                                self.owner_id = chat_id
+                                cfg = _load_config()
+                                cfg["telegram_owner_id"] = chat_id
+                                _save_config(cfg)
+                                await self.send_message(
+                                    f"🛡️ *D.O.N.N.A. TACTICAL OS CONNECTED*\n"
+                                    f"Device paired successfully with Operator: @{username} (ID: `{chat_id}`).\n"
+                                    f"You can now send text or voice commands from anywhere.",
+                                    chat_id=chat_id
+                                )
+                                print(f"[TelegramBridge] ✅ Device paired successfully with @{username} (ID: {chat_id})")
+                            else:
+                                await self._api_call("sendMessage", {
+                                    "chat_id": chat_id,
+                                    "text": (
+                                        "🔒 *Pairing Required*\n\n"
+                                        "This D.O.N.N.A. instance is not paired.\n"
+                                        "To authorize your account as the operator, check the server terminal for the pairing code and send:\n"
+                                        "`/pair <CODE>`"
+                                    ),
+                                    "parse_mode": "Markdown"
+                                })
                             continue
 
                         # Security check

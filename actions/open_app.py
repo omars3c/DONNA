@@ -436,10 +436,17 @@ def _launch_windows(app_name: str) -> LaunchResult:
         except Exception as e:
             pass  # Fall through to blind shell
 
-    # 4. Fallback: blind shell start (unconfirmed)
+    # 4. Fallback: safe OS startfile invocation (unconfirmed, no shell=True injection)
     try:
-        subprocess.Popen(f'start "" "{app_name}"', shell=True)
-        return LaunchResult(ok=True, confirmed=False, detail=f"Shell start invoked for {app_name}")
+        if platform.system() == "Windows":
+            os.startfile(app_name)
+            return LaunchResult(ok=True, confirmed=False, detail=f"os.startfile invoked for {app_name}")
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", app_name])
+            return LaunchResult(ok=True, confirmed=False, detail=f"open invoked for {app_name}")
+        else:
+            subprocess.Popen(["xdg-open", app_name])
+            return LaunchResult(ok=True, confirmed=False, detail=f"xdg-open invoked for {app_name}")
     except Exception as e:
         return LaunchResult(ok=False, confirmed=False, detail=str(e))
 

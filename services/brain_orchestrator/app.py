@@ -29,7 +29,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import Request, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -46,6 +46,8 @@ from shared.config import (
     CONFIG_DIR,
     API_KEYS_PATH,
     BASE_DIR as ROOT_DIR,
+    ALLOWED_ORIGINS,
+    verify_internal_token,
 )
 from services.brain_orchestrator.client_bridge import bridge
 
@@ -65,11 +67,22 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def verify_token_middleware(request: Request, call_next):
+    from shared.config import verify_internal_token
+    try:
+        await verify_internal_token(request)
+    except HTTPException as exc:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return await call_next(request)
+
 
 from shared.error_reporter import install_sentinel, report, report_exception
 install_sentinel(app, "brain_orchestrator")
@@ -139,6 +152,18 @@ TOOL_DECLARATIONS = [
                 "mode": {"type": "STRING", "description": "search | news | research | price | compare"},
             },
             "required": ["query"],
+        },
+    },
+    {
+        "name": "deep_research_report",
+        "description": "Performs deep multi-step autonomous research and synthesizes a professional formatted Word document (.docx) or PDF report, then opens it on screen.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "task": {"type": "STRING", "description": "Detailed research topic, questions to investigate, and outline for the document"},
+                "user_instructions": {"type": "STRING", "description": "Formatting or styling instructions (optional)"}
+            },
+            "required": ["task"],
         },
     },
     {
@@ -328,7 +353,9 @@ class BrainOrchestrator:
                     self._pending_browser_disambiguation = True
             elif name == "web_search":
                 result = await bridge.web_search(args.get("query", ""), mode=args.get("mode", "search"))
-            elif name == "agent_task":
+            elif name == "deep_research_report":
+                result = await bridge.deep_research_report(args.get("task", ""), user_instructions=args.get("user_instructions", ""))
+            elif name in ("agent_task", "autonomous_task"):
                 result = await bridge.agent_task(args.get("task", ""))
             elif name == "recall_memory":
                 result = await bridge.recall_memory(args.get("query", ""), category=args.get("category", "all"))

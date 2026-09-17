@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import Request, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from shared.models.os_control import (
@@ -23,7 +23,7 @@ from shared.models.os_control import (
     OSSettingsRequest,
     GenericResponse,
 )
-from shared.config import HOST_AGENT_PORT, HOST_AGENT_HOST
+from shared.config import HOST_AGENT_PORT, HOST_AGENT_HOST, ALLOWED_ORIGINS, verify_internal_token
 
 from actions.computer_control import computer_control
 from actions.computer_settings import computer_settings
@@ -39,11 +39,22 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def verify_token_middleware(request: Request, call_next):
+    from shared.config import verify_internal_token
+    try:
+        await verify_internal_token(request)
+    except HTTPException as exc:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return await call_next(request)
+
 
 _monitor = SystemMonitor()
 

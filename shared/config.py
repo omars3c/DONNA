@@ -4,6 +4,8 @@ Configuration settings and service endpoints for DONNA Microservices.
 
 import os
 from pathlib import Path
+from typing import List
+from fastapi import Request, HTTPException
 
 # Base Paths
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -45,3 +47,40 @@ SENTINEL_SERVICE_URL = f"http://{SENTINEL_HOST}:{SENTINEL_PORT}"
 AUTONOMOUS_HOST = os.getenv("DONNA_AUTONOMOUS_HOST", "127.0.0.1")
 AUTONOMOUS_PORT = int(os.getenv("DONNA_AUTONOMOUS_PORT", "8007"))
 AUTONOMOUS_SERVICE_URL = f"http://{AUTONOMOUS_HOST}:{AUTONOMOUS_PORT}"
+
+# Security & CORS Configuration
+ALLOWED_ORIGINS: List[str] = [
+    f"http://127.0.0.1:{CHANNEL_GATEWAY_PORT}",
+    f"http://localhost:{CHANNEL_GATEWAY_PORT}",
+    f"http://{CHANNEL_GATEWAY_HOST}:{CHANNEL_GATEWAY_PORT}",
+    "http://127.0.0.1:3000",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+]
+
+INTERNAL_TOKEN_HEADER = "X-Donna-Internal-Token"
+INTERNAL_API_TOKEN = os.getenv("DONNA_INTERNAL_TOKEN", "")
+
+
+async def verify_internal_token(request: Request):
+    """
+    Verifies inter-service call authenticity.
+    If DONNA_INTERNAL_TOKEN is set in environment, incoming requests
+    must provide the matching X-Donna-Internal-Token header.
+    Health checks, docs, and public dashboard endpoints are allowed.
+    """
+    path = request.url.path
+    if path in ("/health", "/docs", "/openapi.json", "/", "/redoc", "/gateway/health"):
+        return True
+
+    if not INTERNAL_API_TOKEN:
+        return True
+
+    token = request.headers.get(INTERNAL_TOKEN_HEADER)
+    if not token or token != INTERNAL_API_TOKEN:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Invalid or missing X-Donna-Internal-Token header",
+        )
+    return True

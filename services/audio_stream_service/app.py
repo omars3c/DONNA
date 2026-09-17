@@ -29,10 +29,10 @@ if str(BASE_DIR) not in sys.path:
 
 import sounddevice as sd
 import numpy as np
-from fastapi import FastAPI
+from fastapi import Request, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from shared.config import AUDIO_PORT, AUDIO_HOST, BRAIN_HOST, BRAIN_PORT
+from shared.config import AUDIO_PORT, AUDIO_HOST, BRAIN_HOST, BRAIN_PORT, ALLOWED_ORIGINS, verify_internal_token
 from core.wakeword import OfflineWakeWordEngine
 from core.sfx import sfx
 from shared.error_reporter import install_sentinel, report, report_exception
@@ -307,11 +307,22 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def verify_token_middleware(request: Request, call_next):
+    from shared.config import verify_internal_token
+    try:
+        await verify_internal_token(request)
+    except HTTPException as exc:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return await call_next(request)
+
 
 install_sentinel(app, "audio_stream_service")
 

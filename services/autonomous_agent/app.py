@@ -5,8 +5,9 @@ import asyncio
 import json
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import uvicorn
 from google import genai
 from google.genai import types
@@ -17,7 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from shared.config import AUTONOMOUS_PORT, AUTONOMOUS_HOST, API_KEYS_PATH
+from shared.config import AUTONOMOUS_PORT, AUTONOMOUS_HOST, API_KEYS_PATH, ALLOWED_ORIGINS, verify_internal_token
 from shared.error_reporter import install_sentinel
 from services.brain_orchestrator.app import TOOL_DECLARATIONS
 from services.brain_orchestrator.client_bridge import bridge
@@ -39,7 +40,7 @@ class TaskManager:
         }
         return task_id
         
-    def get_task(self, task_id: str) -> Dict[str, Any]:
+    def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         return self.tasks.get(task_id)
         
     def update_status(self, task_id: str, status: str, result: str = None, error: str = None):
@@ -62,7 +63,6 @@ You operate in a ReAct (Reasoning + Acting) loop.
 Your goal is to complete the user's task using the available tools.
 Think step-by-step.
 When you are completely finished with the task, you MUST output a final summary starting with 'TASK_COMPLETE:'.
-If you need more information, use a tool.
 """
 
 class AgentLoop:
@@ -72,7 +72,9 @@ class AgentLoop:
             api_key = json.loads(API_KEYS_PATH.read_text(encoding="utf-8")).get("gemini_api_key", "")
             client = genai.Client(api_key=api_key)
             gemini_tools = [types.Tool(function_declarations=TOOL_DECLARATIONS)]
-            chat = client.chats.create(
+            
+            # Non-blocking async client chat session
+            chat = client.aio.chats.create(
                 model="gemini-3.6-flash",
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
@@ -84,7 +86,7 @@ class AgentLoop:
             
             for step in range(max_steps):
                 print(f"[AgentLoop] Step {step+1}/{max_steps} for task {task_id}")
-                response = chat.send_message(prompt)
+                response = await chat.send_message(prompt)
                 
                 task_manager.add_step(task_id, {
                     "step": step + 1,
@@ -125,7 +127,7 @@ class AgentLoop:
                 else:
                     prompt = "Please continue and use tools or output TASK_COMPLETE if you are done."
                     
-            task_manager.update_status(task_id, "failed", error="Max steps reached")
+            task_manager.update_status(task_id, "failed", error="Max steps reached without completion.")
         except Exception as e:
             traceback.print_exc()
             task_manager.update_status(task_id, "failed", error=str(e))
@@ -134,22 +136,63 @@ agent_loop = AgentLoop()
 
 # --- FastAPI App ---
 app = FastAPI(title="DONNA Autonomous Agent", version="1.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.middleware("http")
+async def verify_token_middleware(request: Request, call_next):
+    from shared.config import verify_internal_token
+    try:
+        await verify_internal_token(request)
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return await call_next(request)
+
 install_sentinel(app, "autonomous_agent")
+
 
 class TaskRequest(BaseModel):
     task: str
     max_steps: int = 15
+    wait: bool = False
+    timeout: float = 90.0
+
 
 @app.get("/health")
 def health():
     return {"status": "healthy", "service": "autonomous_agent", "port": AUTONOMOUS_PORT}
 
+
 @app.post("/v1/task")
 async def create_task(req: TaskRequest, background_tasks: BackgroundTasks):
     task_id = task_manager.create_task(req.task)
-    background_tasks.add_task(agent_loop.run, task_id, req.task, req.max_steps)
-    return {"status": "accepted", "task_id": task_id}
+    if req.wait:
+        # Await completion directly up to timeout
+        try:
+            await asyncio.wait_for(agent_loop.run(task_id, req.task, req.max_steps), timeout=req.timeout)
+            task = task_manager.get_task(task_id) or {}
+            return {
+                "status": task.get("status", "completed"),
+                "task_id": task_id,
+                "result": task.get("result"),
+                "error": task.get("error"),
+            }
+        except asyncio.TimeoutError:
+            return {
+                "status": "running",
+                "task_id": task_id,
+                "result": None,
+                "error": f"Task exceeded {req.timeout}s timeout, continuing in background.",
+            }
+    else:
+        background_tasks.add_task(agent_loop.run, task_id, req.task, req.max_steps)
+        return {"status": "accepted", "task_id": task_id}
+
 
 @app.get("/v1/task/{task_id}")
 def get_task(task_id: str):
@@ -159,3 +202,5 @@ def get_task(task_id: str):
     return task
 
 
+if __name__ == "__main__":
+    uvicorn.run(app, host=AUTONOMOUS_HOST, port=AUTONOMOUS_PORT)

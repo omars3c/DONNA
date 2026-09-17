@@ -31,6 +31,7 @@ if sys.platform == "win32":
 
 import time
 import signal
+import secrets
 import subprocess
 import threading
 from pathlib import Path
@@ -99,6 +100,7 @@ class MicroserviceRunner:
         self.include_ui = include_ui
         self.processes: Dict[str, subprocess.Popen] = {}
         self.running = True
+        self.internal_token = secrets.token_hex(32)
 
     def _stream_output(self, name: str, color: str, pipe):
         """Stream child process stdout to console with optional Sentinel scraping."""
@@ -123,6 +125,7 @@ class MicroserviceRunner:
                                 import time as _time
                                 _req.post(
                                     "http://127.0.0.1:8006/v1/errors",
+                                    headers={"X-Donna-Internal-Token": self.internal_token},
                                     json={
                                         "service": name.lower(),
                                         "severity": "ERROR",
@@ -137,6 +140,21 @@ class MicroserviceRunner:
         except Exception:
             pass
 
+    def _wait_for_health(self, name: str, port: int, timeout: float = 6.0) -> bool:
+        """Poll /health endpoint until service is ready or timeout expires."""
+        url = f"http://127.0.0.1:{port}/health"
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                import urllib.request
+                req = urllib.request.Request(url, headers={"X-Donna-Internal-Token": self.internal_token})
+                with urllib.request.urlopen(req, timeout=1.0) as resp:
+                    if resp.status == 200:
+                        return True
+            except Exception:
+                time.sleep(0.25)
+        return False
+
     def start_service(self, svc: dict):
         name = svc["name"]
         mod = svc["module"]
@@ -146,6 +164,7 @@ class MicroserviceRunner:
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
+        env["DONNA_INTERNAL_TOKEN"] = self.internal_token
 
         print(f"🚀 Starting {name} on port {svc['port']}...")
         proc = subprocess.Popen(
@@ -170,6 +189,7 @@ class MicroserviceRunner:
     def start_all(self):
         print("=" * 65)
         print("🧠 D.O.N.N.A. STARK OS — MICROSERVICE ORCHESTRATOR")
+        print(f"🔒 Inter-Service Security: ACTIVE (Token: {self.internal_token[:8]}...)")
         print("=" * 65)
 
         for svc in SERVICES:
@@ -177,7 +197,11 @@ class MicroserviceRunner:
                 print(f"⏭️ Skipping {svc['name']} (--no-audio specified)")
                 continue
             self.start_service(svc)
-            time.sleep(0.8)  # Staggered startup
+            ready = self._wait_for_health(svc["name"], svc["port"], timeout=6.0)
+            if ready:
+                print(f"   ↳ {svc['name']} ready and responsive.")
+            else:
+                print(f"   ↳ ⚠️ {svc['name']} started (health probe timed out, proceeding).")
 
         if self.include_ui:
             print("🖥️ Starting PyQt6 Tactical HUD...")
@@ -185,6 +209,7 @@ class MicroserviceRunner:
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
             env["PYTHONIOENCODING"] = "utf-8"
+            env["DONNA_INTERNAL_TOKEN"] = self.internal_token
             proc = subprocess.Popen(ui_cmd, cwd=str(BASE_DIR), env=env)
             self.processes["UI"] = proc
 
@@ -227,15 +252,32 @@ def main():
     runner.start_all()
 
     reported_exits = set()
+    restarts: Dict[str, int] = {}
+    last_restart: Dict[str, float] = {}
+
     try:
         while runner.running:
             time.sleep(1)
-            # Check for crashed processes
-            for name, proc in list(runner.processes.items()):
-                code = proc.poll()
-                if code is not None and name not in reported_exits and runner.running:
-                    reported_exits.add(name)
-                    print(f"⚠️ Service '{name}' exited with code {code}")
+            for svc in SERVICES:
+                name = svc["name"]
+                proc = runner.processes.get(name)
+                if proc and proc.poll() is not None and runner.running:
+                    code = proc.poll()
+                    now = time.time()
+                    if now - last_restart.get(name, 0) > 60:
+                        restarts[name] = 0
+
+                    count = restarts.get(name, 0)
+                    if count < 3:
+                        restarts[name] = count + 1
+                        last_restart[name] = now
+                        print(f"\n⚠️ Service '{name}' exited with code {code}. Supervisor Watchdog restarting ({count+1}/3)...")
+                        runner.start_service(svc)
+                        runner._wait_for_health(name, svc["port"], timeout=6.0)
+                    else:
+                        if name not in reported_exits:
+                            reported_exits.add(name)
+                            print(f"\n❌ Service '{name}' failed repeatedly (max restart limit reached).")
     except KeyboardInterrupt:
         runner.stop_all()
 

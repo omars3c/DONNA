@@ -31,11 +31,11 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 import requests as req_lib
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import Request, FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from shared.config import SENTINEL_PORT, SENTINEL_HOST
+from shared.config import SENTINEL_PORT, SENTINEL_HOST, ALLOWED_ORIGINS, verify_internal_token
 from shared.models.sentinel import (
     ErrorReport,
     ErrorSeverity,
@@ -193,11 +193,22 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def verify_token_middleware(request: Request, call_next):
+    from shared.config import verify_internal_token
+    try:
+        await verify_internal_token(request)
+    except HTTPException as exc:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return await call_next(request)
+
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Request, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from shared.models.research import (
@@ -22,7 +22,7 @@ from shared.models.research import (
     AgentTaskResponse,
     YouTubeRequest,
 )
-from shared.config import RESEARCH_PORT, RESEARCH_HOST
+from shared.config import RESEARCH_PORT, RESEARCH_HOST, ALLOWED_ORIGINS, verify_internal_token
 from actions.web_search import web_search as web_search_action
 from actions.agent_task import execute_autonomous_agent
 from actions.youtube_video import youtube_video
@@ -35,11 +35,22 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def verify_token_middleware(request: Request, call_next):
+    from shared.config import verify_internal_token
+    try:
+        await verify_internal_token(request)
+    except HTTPException as exc:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return await call_next(request)
+
 
 from shared.error_reporter import install_sentinel
 install_sentinel(app, "research_agent_service")

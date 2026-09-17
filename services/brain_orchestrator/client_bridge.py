@@ -19,8 +19,12 @@ class MicroserviceBridge:
         self._client: Optional[httpx.AsyncClient] = None
 
     async def get_client(self) -> httpx.AsyncClient:
+        from shared.config import INTERNAL_TOKEN_HEADER, INTERNAL_API_TOKEN
+        headers = {}
+        if INTERNAL_API_TOKEN:
+            headers[INTERNAL_TOKEN_HEADER] = INTERNAL_API_TOKEN
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=30.0)
+            self._client = httpx.AsyncClient(timeout=30.0, headers=headers)
         return self._client
 
     # в”Ђв”Ђ Cortex Memory Service Calls в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
@@ -103,16 +107,39 @@ class MicroserviceBridge:
     async def agent_task(self, task: str, user_instructions: str = "") -> str:
         client = await self.get_client()
         try:
+            full_task = f"{task} (Instructions: {user_instructions})" if user_instructions else task
             resp = await client.post(
                 f"{AUTONOMOUS_SERVICE_URL}/v1/task",
-                json={"task": task, "user_instructions": user_instructions},
-                timeout=120.0,
+                json={"task": full_task, "wait": True, "timeout": 85.0},
+                timeout=95.0,
             )
             if resp.status_code == 200:
-                return resp.json().get("result", "Autonomous task completed.")
+                data = resp.json()
+                if data.get("result"):
+                    return data.get("result")
+                elif data.get("status") == "running":
+                    return f"Задача принята (ID: {data.get('task_id')}). Выполнение продолжается в фоновом режиме."
+                elif data.get("error"):
+                    return f"Ошибка выполнения агента: {data.get('error')}"
+                return "Автономная задача успешно завершена."
             return f"Agent task error: {resp.text}"
         except Exception as e:
             return f"Autonomous agent error: {e}"
+
+    async def deep_research_report(self, task: str, user_instructions: str = "") -> str:
+        """Executes deep research and generates a Word (.docx) document via Research Agent Service."""
+        client = await self.get_client()
+        try:
+            resp = await client.post(
+                f"{RESEARCH_SERVICE_URL}/v1/research/task",
+                json={"task": task, "user_instructions": user_instructions},
+                timeout=180.0,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("result", "Research report generated and opened.")
+            return f"Research agent error: {resp.text}"
+        except Exception as e:
+            return f"Research agent error: {e}"
 
     async def youtube_video(self, action: str = "play", query: Optional[str] = None, url: Optional[str] = None, save: bool = False) -> str:
         client = await self.get_client()
