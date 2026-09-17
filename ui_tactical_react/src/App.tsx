@@ -346,14 +346,38 @@ export default function App() {
     return () => obs.disconnect();
   }, [booted]);
 
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    try {
+      const host = window.location.hostname || "127.0.0.1";
+      ws = new WebSocket(`ws://${host}:8001/ws/hud`);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "log" && data.text) {
+            setChat((c) => [...c, { from: data.speaker || "sys", text: data.text }]);
+          } else if (data.type === "content" && data.text) {
+            setChat((c) => [...c, { from: "sys", text: `[${data.title || "INTEL"}]
+${data.text}` }]);
+          }
+        } catch (_) {}
+      };
+    } catch (_) {}
+    return () => {
+      ws?.close();
+    };
+  }, []);
+
   function handleSend() {
     const msg = input.trim();
     if (!msg) return;
     setChat(c => [...c, { from: "user", text: msg }]);
     setInput("");
-    setTimeout(() => {
-      setChat(c => [...c, { from: "sys", text: "Request acknowledged. Running tactical analysis. Stand by for response." }]);
-    }, 1000);
+    fetch("/api/command", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: msg }),
+    }).catch(() => {});
   }
 
   const timeStr = `${pad(time.getHours())}:${pad(time.getMinutes())}:${pad(time.getSeconds())}`;
