@@ -114,11 +114,17 @@ TOOL_DECLARATIONS = [
     },
     {
         "name": "open_app",
-        "description": "Opens any Windows application. Always call this when user asks to open an app.",
+        "description": (
+            "Opens any Windows application, browser, or website. "
+            "Pass the raw user-provided name (e.g. 'browser', 'chrome', 'youtube', 'погода в токио'). "
+            "IMPORTANT: if the result string starts with 'AMBIGUOUS_BROWSER:', "
+            "you MUST speak the clarification question to the user and then call open_app "
+            "again with the specific browser name the user chose (e.g. 'chrome', 'opera gx')."
+        ),
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "app_name": {"type": "STRING", "description": "Application name e.g. 'Calculator', 'Chrome', 'Notepad'"}
+                "app_name": {"type": "STRING", "description": "Application or website name, e.g. 'Calculator', 'Chrome', 'youtube', 'browser'"}
             },
             "required": ["app_name"],
         },
@@ -248,6 +254,9 @@ class BrainOrchestrator:
         self._briefing_sent = False
         self._last_content = None
         self._tool_in_progress = False
+        # Set to True after open_app returns AMBIGUOUS_BROWSER; cleared after the
+        # next open_app call so the chosen browser is saved as default.
+        self._pending_browser_disambiguation = False
 
     def wake_up(self, duration: float = 15.0, reason: str = ""):
         self._active_until = time.monotonic() + duration
@@ -309,7 +318,14 @@ class BrainOrchestrator:
         result = "Done"
         try:
             if name == "open_app":
-                result = await bridge.open_app(args.get("app_name", ""))
+                _app_name = args.get("app_name", "")
+                _disambig = self._pending_browser_disambiguation
+                # Reset flag before the call so it's always cleaned up
+                self._pending_browser_disambiguation = False
+                result = await bridge.open_app(_app_name, pending_disambiguation=_disambig)
+                # If this call returned AMBIGUOUS_BROWSER, arm the flag for the next call
+                if isinstance(result, str) and result.startswith("AMBIGUOUS_BROWSER:"):
+                    self._pending_browser_disambiguation = True
             elif name == "web_search":
                 result = await bridge.web_search(args.get("query", ""), mode=args.get("mode", "search"))
             elif name == "agent_task":

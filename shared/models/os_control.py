@@ -16,6 +16,9 @@ class OSActionRequest(BaseModel):
 
 class AppLaunchRequest(BaseModel):
     app_name: str
+    # Set to True when this call follows an AMBIGUOUS_BROWSER response, i.e. the
+    # user explicitly chose this browser — so it should be saved as the default.
+    pending_disambiguation: bool = False
 
 
 class OSSettingsRequest(BaseModel):

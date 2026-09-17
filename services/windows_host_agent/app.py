@@ -81,12 +81,16 @@ def api_computer_control(req: OSActionRequest):
 @app.post("/v1/os/launch-app", response_model=GenericResponse)
 def api_launch_app(req: AppLaunchRequest):
     try:
-        params = {"app_name": req.app_name}
+        params = {
+            "app_name": req.app_name,
+            "pending_disambiguation": req.pending_disambiguation,
+        }
         res_text = open_app(parameters=params)
         failed = (
             res_text.startswith("Failed to open")
             or res_text.startswith("Could not confirm")
             or res_text.startswith("Started a launch attempt")
+            or res_text.startswith("AMBIGUOUS_BROWSER")
             or not res_text.startswith("Opened ")
         )
         return GenericResponse(success=not failed, message=res_text or f"Launched {req.app_name}")

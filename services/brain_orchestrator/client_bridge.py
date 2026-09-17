@@ -128,12 +128,12 @@ class MicroserviceBridge:
 
     # ── Windows Host Agent Calls ─────────────────────────────────────────────
 
-    async def open_app(self, app_name: str) -> str:
+    async def open_app(self, app_name: str, pending_disambiguation: bool = False) -> str:
         client = await self.get_client()
         try:
             resp = await client.post(
                 f"{HOST_AGENT_SERVICE_URL}/v1/os/launch-app",
-                json={"app_name": app_name},
+                json={"app_name": app_name, "pending_disambiguation": pending_disambiguation},
             )
             if resp.status_code == 200:
                 return resp.json().get("message", f"Opened {app_name}")
