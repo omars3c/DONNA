@@ -29,7 +29,7 @@ if str(BASE_DIR) not in sys.path:
 
 import sounddevice as sd
 import numpy as np
-from fastapi import Request, FastAPI
+from fastapi import Request, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from shared.config import AUDIO_PORT, AUDIO_HOST, BRAIN_HOST, BRAIN_PORT, ALLOWED_ORIGINS, verify_internal_token

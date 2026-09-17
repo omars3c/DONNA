@@ -79,20 +79,42 @@ class AgentLoop:
             client = genai.Client(api_key=api_key)
             gemini_tools = [types.Tool(function_declarations=TOOL_DECLARATIONS)]
             
-            # Non-blocking async client chat session
-            chat = client.aio.chats.create(
-                model="gemini-3.6-flash",
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    tools=gemini_tools,
-                    temperature=0.4
-                )
-            )
+            # Non-blocking async client chat session with model fallback
+            MODELS = ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-flash-latest"]
+            chat = None
+            for model_name in MODELS:
+                try:
+                    chat = client.aio.chats.create(
+                        model=model_name,
+                        config=types.GenerateContentConfig(
+                            system_instruction=SYSTEM_PROMPT,
+                            tools=gemini_tools,
+                            temperature=0.4
+                        )
+                    )
+                    break
+                except Exception as mex:
+                    print(f"[AgentLoop] Candidate {model_name} failed: {mex}, falling back...")
+            if chat is None:
+                raise RuntimeError("No available Gemini models for Autonomous Agent session")
             prompt = f"Perform the following task autonomously. Output 'TASK_COMPLETE: <summary>' when done.\nTask: {goal}"
             
             for step in range(max_steps):
                 print(f"[AgentLoop] Step {step+1}/{max_steps} for task {task_id}")
-                response = await chat.send_message(prompt)
+                response = None
+                max_retries = 3
+                for retry_idx in range(max_retries):
+                    try:
+                        response = await chat.send_message(prompt)
+                        break
+                    except Exception as exc:
+                        err_str = str(exc).lower()
+                        if retry_idx < max_retries - 1 and any(k in err_str for k in ("503", "429", "unavailable", "spike", "resource_exhausted")):
+                            wait_s = 2 ** retry_idx
+                            print(f"[AgentLoop] Transient model error ({exc}), retrying in {wait_s}s...")
+                            await asyncio.sleep(wait_s)
+                        else:
+                            raise
                 
                 task_manager.add_step(task_id, {
                     "step": step + 1,

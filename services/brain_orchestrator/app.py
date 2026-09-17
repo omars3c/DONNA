@@ -168,11 +168,22 @@ TOOL_DECLARATIONS = [
     },
     {
         "name": "agent_task",
-        "description": "Executes complex autonomous multi-step research and generates a Word (.docx) or PDF document.",
+        "description": "Executes autonomous multi-step problem solving, coding, executing terminal commands, troubleshooting, or inspecting the system using the autonomous ReAct agent.",
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "task": {"type": "STRING", "description": "Detailed task description to research and write to document"},
+                "task": {"type": "STRING", "description": "Detailed engineering, coding, or troubleshooting task to solve autonomously"},
+            },
+            "required": ["task"],
+        },
+    },
+    {
+        "name": "autonomous_task",
+        "description": "Alias for agent_task: Executes autonomous multi-step problem solving, coding, command execution, and system debugging.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "task": {"type": "STRING", "description": "Detailed task description to solve autonomously"},
             },
             "required": ["task"],
         },

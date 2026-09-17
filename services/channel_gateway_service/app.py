@@ -40,7 +40,9 @@ class ChannelGatewayService:
         """Sends command to Brain Orchestrator."""
         try:
             url = f"{BRAIN_SERVICE_URL}/v1/command"
-            await asyncio.to_thread(requests.post, url, json={"text": text}, timeout=5)
+            token = os.getenv("DONNA_INTERNAL_TOKEN", "")
+            headers = {"X-Donna-Internal-Token": token} if token else {}
+            await asyncio.to_thread(requests.post, url, json={"text": text}, headers=headers, timeout=5)
             print(f"[ChannelGateway] Forwarded command to Brain: '{text[:50]}'")
         except Exception as e:
             print(f"[ChannelGateway] Failed to forward command to Brain: {e}")

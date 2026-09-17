@@ -482,6 +482,7 @@ def _sender_loop():
                 resp = req_lib.post(
                     f"{_sentinel_url}/v1/errors/batch",
                     json=batch,
+                    headers=_sentinel_headers(),
                     timeout=2,
                 )
                 if resp.status_code == 200:
@@ -496,6 +497,11 @@ def _sender_loop():
         except Exception:
             # Top-level catch: reporter must never crash
             pass
+
+
+def _sentinel_headers() -> dict:
+    token = os.getenv("DONNA_INTERNAL_TOKEN", "")
+    return {"X-Donna-Internal-Token": token} if token else {}
 
 
 def _write_fallback(batch: list):
@@ -537,6 +543,7 @@ def _try_resend_fallback(req_lib):
                 resp = req_lib.post(
                     f"{_sentinel_url}/v1/errors/batch",
                     json=chunk,
+                    headers=_sentinel_headers(),
                     timeout=2,
                 )
                 if resp.status_code != 200:

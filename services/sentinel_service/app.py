@@ -31,7 +31,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 import requests as req_lib
-from fastapi import Request, FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import Request, FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 

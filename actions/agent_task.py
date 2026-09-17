@@ -39,7 +39,7 @@ API_FILE = CONFIG_DIR / "api_keys.json"
 GEMINI_MODELS = [
     "gemini-3.6-flash",
     "gemini-flash-latest",
-    "gemini-2.5-flash",
+    "gemini-3.5-flash",
 ]
 
 

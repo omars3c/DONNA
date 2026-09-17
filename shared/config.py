@@ -74,13 +74,23 @@ async def verify_internal_token(request: Request):
     if path in ("/health", "/docs", "/openapi.json", "/", "/redoc", "/gateway/health"):
         return True
 
-    if not INTERNAL_API_TOKEN:
+    active_token = os.getenv("DONNA_INTERNAL_TOKEN", INTERNAL_API_TOKEN)
+    if not active_token:
         return True
 
     token = request.headers.get(INTERNAL_TOKEN_HEADER)
-    if not token or token != INTERNAL_API_TOKEN:
+    if not token or token != active_token:
         raise HTTPException(
             status_code=403,
             detail="Forbidden: Invalid or missing X-Donna-Internal-Token header",
         )
     return True
+
+
+def get_internal_headers(extra_headers: dict = None) -> dict:
+    """Returns headers dict populated with X-Donna-Internal-Token if configured."""
+    headers = dict(extra_headers) if extra_headers else {}
+    token = os.getenv("DONNA_INTERNAL_TOKEN", INTERNAL_API_TOKEN)
+    if token:
+        headers[INTERNAL_TOKEN_HEADER] = token
+    return headers

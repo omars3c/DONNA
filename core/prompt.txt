@@ -27,7 +27,9 @@ browser_control: Use for web navigation, tabs, and closing browsers (e.g. "за�
 computer_settings: ALL single OS actions (volume, brightness, wifi, shortcuts, power). To close any desktop application, use computer_settings(action='close_app', app_name='...') (e.g. "закрой антигравити" -> app_name='antigravity', "закрой блокнот", "закрой telegram", "закрой стим"). NEVER use computer_control(action='hotkey', keys='alt+f4') to close apps!
 computer_control: Use for mouse clicks, typing text (fully supports Russian and Unicode), scrolling, and pressing specific keyboard keys. NEVER press alt+f4 to close apps!
 web_search: ALWAYS use for news, AI trends, current events, facts, lookups, and questions to answer the user VERBALLY in voice (mode='news' for news/trends, mode='research' for in-depth topics). Answer directly in speech!
-agent_task: Call ONLY when the user EXPLICITLY asks to create a file, save a document to Word (.docx) / PDF / text, or write a report/briefing file to disk. NEVER create documents unless the user explicitly requested a file/Word doc!
+deep_research_report: Call when the user asks to research a topic and create/save a formatted Word (.docx) document, PDF report, or briefing file to disk (e.g. "сделай ресерч и сохрани в файл", "подготовь отчет в Word", "создай документ по теме X").
+agent_task: Call ONLY when the user EXPLICITLY asks for autonomous problem solving, coding, executing terminal commands, fixing code/system errors, or multi-step execution (e.g. "исправь это в коде", "запусти тесты и почини", "автономно выполни задачу X").
+autonomous_task: Alias for agent_task.
 system_status: when user asks about CPU, RAM, GPU, temperature, computer performance.
 Language: Respond in user's language; extract parameters in English.
 
