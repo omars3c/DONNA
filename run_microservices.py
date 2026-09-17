@@ -1,8 +1,8 @@
-"""
-run_microservices.py — D.O.N.N.A. Unified Microservices Orchestrator
+﻿"""
+run_microservices.py вЂ” D.O.N.N.A. Unified Microservices Orchestrator
 
 Launches and supervises all 7 microservices as isolated processes:
-  [0] Sentinel Service          (:8006)  ← starts first to catch startup errors
+  [0] Sentinel Service          (:8006)  в†ђ starts first to catch startup errors
   [1] Cortex Memory Service     (:8002)
   [2] Research Agent Service    (:8003)
   [3] Windows Host Agent        (:8004)
@@ -140,7 +140,7 @@ class MicroserviceRunner:
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
 
-        print(f"🚀 Starting {name} on port {svc['port']}...")
+        print(f"рџљЂ Starting {name} on port {svc['port']}...")
         proc = subprocess.Popen(
             cmd,
             cwd=str(BASE_DIR),
@@ -162,18 +162,18 @@ class MicroserviceRunner:
 
     def start_all(self):
         print("=" * 65)
-        print("🧠 D.O.N.N.A. STARK OS — MICROSERVICE ORCHESTRATOR")
+        print("рџ§  D.O.N.N.A. STARK OS вЂ” MICROSERVICE ORCHESTRATOR")
         print("=" * 65)
 
         for svc in SERVICES:
             if svc.get("optional") and not self.include_audio:
-                print(f"⏩ Skipping {svc['name']} (--no-audio specified)")
+                print(f"вЏ© Skipping {svc['name']} (--no-audio specified)")
                 continue
             self.start_service(svc)
             time.sleep(0.8)  # Staggered startup
 
         if self.include_ui:
-            print("🖥️ Starting PyQt6 Tactical HUD...")
+            print("рџ–ҐпёЏ Starting PyQt6 Tactical HUD...")
             ui_cmd = [sys.executable, "ui.py"]
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
@@ -181,11 +181,11 @@ class MicroserviceRunner:
             proc = subprocess.Popen(ui_cmd, cwd=str(BASE_DIR), env=env)
             self.processes["UI"] = proc
 
-        print("\n✅ All microservices launched and operating.")
+        print("\nвњ… All microservices launched and operating.")
         print("Press Ctrl+C to terminate all services.\n" + "-" * 65)
 
     def stop_all(self):
-        print("\n🛑 Stopping all microservices...")
+        print("\nрџ›‘ Stopping all microservices...")
         self.running = False
         for name, proc in self.processes.items():
             try:
@@ -201,7 +201,7 @@ class MicroserviceRunner:
                     proc.kill()
             except Exception:
                 pass
-        print("👋 All services stopped.")
+        print("рџ‘‹ All services stopped.")
 
 
 def main():
@@ -228,7 +228,7 @@ def main():
                 code = proc.poll()
                 if code is not None and name not in reported_exits and runner.running:
                     reported_exits.add(name)
-                    print(f"⚠️ Service '{name}' exited with code {code}")
+                    print(f"вљ пёЏ Service '{name}' exited with code {code}")
     except KeyboardInterrupt:
         runner.stop_all()
 

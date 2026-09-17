@@ -1,4 +1,4 @@
-"""
+﻿"""
 Client bridge for dispatching tool calls from Brain Orchestrator to downstream microservices.
 """
 
@@ -22,7 +22,7 @@ class MicroserviceBridge:
             self._client = httpx.AsyncClient(timeout=30.0)
         return self._client
 
-    # ── Cortex Memory Service Calls ──────────────────────────────────────────
+    # в”Ђв”Ђ Cortex Memory Service Calls в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
     async def recall_memory(self, query: str, category: str = "all", limit: int = 5) -> str:
         client = await self.get_client()
@@ -84,7 +84,7 @@ class MicroserviceBridge:
         except Exception as e:
             return f"Journal error: {e}"
 
-    # ── Research Agent Service Calls ─────────────────────────────────────────
+    # в”Ђв”Ђ Research Agent Service Calls в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
     async def web_search(self, query: str, mode: str = "search", items: Optional[list] = None, aspect: Optional[str] = None) -> str:
         client = await self.get_client()
@@ -103,7 +103,7 @@ class MicroserviceBridge:
         client = await self.get_client()
         try:
             resp = await client.post(
-                f"{RESEARCH_SERVICE_URL}/v1/research/task",
+                f"{AUTONOMOUS_SERVICE_URL}/v1/task",
                 json={"task": task, "user_instructions": user_instructions},
                 timeout=120.0,
             )
@@ -126,7 +126,7 @@ class MicroserviceBridge:
         except Exception as e:
             return f"YouTube service error: {e}"
 
-    # ── Windows Host Agent Calls ─────────────────────────────────────────────
+    # в”Ђв”Ђ Windows Host Agent Calls в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
     async def open_app(self, app_name: str, pending_disambiguation: bool = False) -> str:
         client = await self.get_client()
@@ -197,3 +197,4 @@ class MicroserviceBridge:
 
 
 bridge = MicroserviceBridge()
+
