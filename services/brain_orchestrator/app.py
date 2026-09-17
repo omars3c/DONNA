@@ -719,5 +719,7 @@ async def ws_hud(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
+    from shared.port_manager import free_port
+    free_port(BRAIN_PORT, "BrainOrchestrator")
     print(f"Starting Brain Orchestrator on {BRAIN_HOST}:{BRAIN_PORT}...")
     uvicorn.run(app, host=BRAIN_HOST, port=BRAIN_PORT)

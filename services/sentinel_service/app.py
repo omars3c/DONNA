@@ -353,5 +353,7 @@ async def ws_errors(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
+    from shared.port_manager import free_port
+    free_port(SENTINEL_PORT, "SentinelService")
     print(f"Starting Sentinel Service on {SENTINEL_HOST}:{SENTINEL_PORT}...")
     uvicorn.run(app, host=SENTINEL_HOST, port=SENTINEL_PORT)

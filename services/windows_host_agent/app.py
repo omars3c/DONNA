@@ -197,5 +197,7 @@ def api_reminder(req: ReminderActionRequest):
 
 if __name__ == "__main__":
     import uvicorn
+    from shared.port_manager import free_port
+    free_port(HOST_AGENT_PORT, "WindowsHostAgent")
     print(f"Starting Windows Host Agent on {HOST_AGENT_HOST}:{HOST_AGENT_PORT}...")
     uvicorn.run(app, host=HOST_AGENT_HOST, port=HOST_AGENT_PORT)

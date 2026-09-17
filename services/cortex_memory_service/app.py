@@ -178,5 +178,7 @@ def api_get_summary():
 
 if __name__ == "__main__":
     import uvicorn
+    from shared.port_manager import free_port
+    free_port(CORTEX_PORT, "CortexMemory")
     print(f"Starting Cortex Memory Service on {CORTEX_HOST}:{CORTEX_PORT}...")
     uvicorn.run(app, host=CORTEX_HOST, port=CORTEX_PORT)

@@ -97,6 +97,7 @@ install_sentinel(app, "channel_gateway_service")
 
 
 @app.get("/gateway/health")
+@app.get("/health")
 def health():
     return {
         "status": "healthy",
@@ -107,6 +108,8 @@ def health():
 
 if __name__ == "__main__":
     import uvicorn
+    from shared.port_manager import free_port
+    free_port(CHANNEL_GATEWAY_PORT, "ChannelGateway")
     print(f"Starting Channel Gateway on {CHANNEL_GATEWAY_HOST}:{CHANNEL_GATEWAY_PORT}...")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

@@ -340,5 +340,7 @@ def health():
 
 if __name__ == "__main__":
     import uvicorn
+    from shared.port_manager import free_port
+    free_port(AUDIO_PORT, "AudioStreamService")
     print(f"Starting Audio Stream Service on {AUDIO_HOST}:{AUDIO_PORT}...")
     uvicorn.run(app, host=AUDIO_HOST, port=AUDIO_PORT)

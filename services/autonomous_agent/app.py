@@ -239,4 +239,6 @@ def get_task(task_id: str):
 
 
 if __name__ == "__main__":
+    from shared.port_manager import free_port
+    free_port(AUTONOMOUS_PORT, "AutonomousAgent")
     uvicorn.run(app, host=AUTONOMOUS_HOST, port=AUTONOMOUS_PORT)

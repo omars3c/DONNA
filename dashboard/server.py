@@ -38,7 +38,11 @@ except Exception:
 
 BASE_DIR    = Path(__file__).resolve().parent.parent
 STATIC_DIR  = Path(__file__).parent / "static"
-PORT        = 8000
+try:
+    from shared.config import CHANNEL_GATEWAY_PORT as PORT
+except ImportError:
+    import os
+    PORT = int(os.getenv("DONNA_CHANNEL_PORT", "8000"))
 MAX_UPLOAD_MB = 500
 
 
@@ -421,7 +425,7 @@ class DashboardServer:
     def get_manual_url(self) -> str:
         """URL for manual browser entry. When HTTPS active, points to alias port (also HTTPS)."""
         if self._ssl_enabled():
-            return f"{self._ip}:{PORT + 1}"
+            return f"{self._ip}:{PORT + 10}"
         return f"{self._ip}:{PORT}"
 
     def _aes_key(self, session_key: str) -> bytes:
@@ -798,12 +802,12 @@ class DashboardServer:
         User types IP:8001 → Chrome tries https → self-signed cert warning → accept once → done."""
         ssl_key  = BASE_DIR / "config" / "certs" / "jarvis.key"
         ssl_cert = BASE_DIR / "config" / "certs" / "jarvis.crt"
-        asyncio.get_event_loop().run_in_executor(None, _ensure_network_access, PORT + 1)
+        asyncio.get_event_loop().run_in_executor(None, _ensure_network_access, PORT + 10)
         cfg = uvicorn.Config(
-            self.app, host="0.0.0.0", port=PORT + 1, log_level="warning",
+            self.app, host="0.0.0.0", port=PORT + 10, log_level="warning",
             ssl_keyfile=str(ssl_key), ssl_certfile=str(ssl_cert),
         )
-        print(f"[Dashboard] Manual entry:  {self._ip}:{PORT + 1}  (type in browser, accept cert once)")
+        print(f"[Dashboard] Manual entry:  {self._ip}:{PORT + 10}  (type in browser, accept cert once)")
         await uvicorn.Server(cfg).serve()
 
     async def serve(self) -> None:
@@ -815,6 +819,9 @@ class DashboardServer:
         # Firewall setup runs in a thread — uvicorn starts immediately,
         # no waiting for UAC dialogs or subprocess timeouts.
         asyncio.get_event_loop().run_in_executor(None, _ensure_network_access, PORT)
+
+        from shared.port_manager import free_port
+        free_port(PORT, "Dashboard")
 
         use_ssl  = self._ssl_enabled()
         ssl_key  = BASE_DIR / "config" / "certs" / "jarvis.key"
@@ -831,4 +838,13 @@ class DashboardServer:
         proto = "https" if use_ssl else "http"
         print(f"[Dashboard] {proto}://{self._ip}:{PORT}")
         print("[Dashboard] Press 'Remote Control' in JARVIS UI to get the QR code.")
-        await uvicorn.Server(cfg).serve()
+        try:
+            await uvicorn.Server(cfg).serve()
+        except OSError as e:
+            if "10048" in str(e) or "address already in use" in str(e).lower():
+                print(f"[Dashboard] Port {PORT} busy ({e}). Re-attempting port cleanup...")
+                free_port(PORT, "Dashboard")
+                await asyncio.sleep(0.5)
+                await uvicorn.Server(cfg).serve()
+            else:
+                raise

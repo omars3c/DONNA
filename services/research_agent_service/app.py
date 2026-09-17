@@ -118,5 +118,7 @@ def api_youtube_video(req: YouTubeRequest):
 
 if __name__ == "__main__":
     import uvicorn
+    from shared.port_manager import free_port
+    free_port(RESEARCH_PORT, "ResearchAgent")
     print(f"Starting Research Agent Service on {RESEARCH_HOST}:{RESEARCH_PORT}...")
     uvicorn.run(app, host=RESEARCH_HOST, port=RESEARCH_PORT)
