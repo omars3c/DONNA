@@ -46,3 +46,19 @@ class GenericResponse(BaseModel):
     success: bool
     message: str
     data: Optional[Any] = None
+
+
+class BrowserActionRequest(BaseModel):
+    action: str = "open"  # open | close | close_all | switch | list_browsers | navigate | new_tab | close_tab
+    browser: Optional[str] = None
+    url: Optional[str] = None
+    target: Optional[str] = None
+
+
+class ReminderActionRequest(BaseModel):
+    action: str = "set"  # set | list | cancel | cancel_all
+    date: Optional[str] = None
+    time: Optional[str] = None
+    message: Optional[str] = None
+    query: Optional[str] = None
+    reminder_id: Optional[str] = None

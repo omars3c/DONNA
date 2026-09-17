@@ -21,8 +21,12 @@ from shared.models.os_control import (
     OSActionRequest,
     AppLaunchRequest,
     OSSettingsRequest,
+    BrowserActionRequest,
+    ReminderActionRequest,
     GenericResponse,
 )
+from actions.browser_control import browser_control
+from actions.reminder import reminder
 from shared.config import HOST_AGENT_PORT, HOST_AGENT_HOST, ALLOWED_ORIGINS, verify_internal_token
 
 from actions.computer_control import computer_control
@@ -160,6 +164,33 @@ def api_capture_camera(format: str = "binary"):
             b64_str = base64.b64encode(img_bytes).decode("ascii")
             return {"mime_type": mime_type, "data_b64": b64_str}
         return Response(content=img_bytes, media_type=mime_type)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v1/os/browser", response_model=GenericResponse)
+def api_browser_control(req: BrowserActionRequest):
+    try:
+        params = {k: v for k, v in req.model_dump().items() if v is not None}
+        res_text = browser_control(parameters=params)
+        return GenericResponse(success=True, message=res_text or "Done")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/v1/os/reminder", response_model=GenericResponse)
+def api_reminder(req: ReminderActionRequest):
+    try:
+        params = {
+            "action": req.action,
+            "date": req.date,
+            "time": req.time,
+            "message": req.message,
+            "query": req.query,
+            "reminder_id": req.reminder_id,
+        }
+        res_text = reminder(parameters=params)
+        return GenericResponse(success=True, message=res_text or "Done")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

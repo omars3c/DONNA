@@ -936,12 +936,15 @@ def browser_control(
     session_memory=None,
 ) -> str:
     params  = parameters or {}
-    action  = params.get("action", "").lower().strip()
-    browser = params.get("browser", "").lower().strip() or None
+    raw_action = params.get("action")
+    action  = raw_action.lower().strip() if isinstance(raw_action, str) else ""
+    raw_browser = params.get("browser")
+    browser = raw_browser.lower().strip() if isinstance(raw_browser, str) and raw_browser.strip() else None
     result  = "Unknown action."
 
     if action == "switch":
-        target = browser or params.get("target", "").lower().strip()
+        raw_target = params.get("target")
+        target = browser or (raw_target.lower().strip() if isinstance(raw_target, str) else "")
         result = _registry.switch(target) if target else "Please specify a browser."
         _log(player, result)
         return result

@@ -272,6 +272,60 @@ TOOL_DECLARATIONS = [
             "properties": {},
         },
     },
+    {
+        "name": "browser_control",
+        "description": "Controls web browsers (Chrome, Firefox, Opera, Edge). Supports opening URLs in real user profiles, switching tabs, and cleanly closing browsers.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {"type": "STRING", "description": "open | close | close_all | switch | list_browsers | navigate | new_tab | close_tab"},
+                "browser": {"type": "STRING", "description": "Browser name: chrome | firefox | edge | opera"},
+                "url": {"type": "STRING", "description": "Website URL to navigate to (optional)"},
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "reminder",
+        "description": "Sets, lists, and cancels alarms, reminders, and scheduled tasks integrated with Windows Task Scheduler.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {"type": "STRING", "description": "set | list | cancel | cancel_all"},
+                "date": {"type": "STRING", "description": "Date in YYYY-MM-DD format (optional, default today)"},
+                "time": {"type": "STRING", "description": "Time in HH:MM format (e.g. 14:30)"},
+                "message": {"type": "STRING", "description": "Reminder text description"},
+                "query": {"type": "STRING", "description": "Search text or ID to cancel"},
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "youtube_video",
+        "description": "Searches, plays, or fetches transcripts and intelligence from YouTube videos.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {"type": "STRING", "description": "play | search | info | transcript"},
+                "query": {"type": "STRING", "description": "Video topic or search title"},
+                "url": {"type": "STRING", "description": "Direct YouTube URL if available"},
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "openclaw_skill",
+        "description": "Executes any of the 51 specialized OpenClaw skills including weather, diagram generation, summarization, PDF extraction, and utilities.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "skill_name": {"type": "STRING", "description": "Name of OpenClaw skill, e.g. weather, diagram-maker, summarize, nano-pdf, spotify-player"},
+                "query": {"type": "STRING", "description": "Input prompt or query for the skill"},
+            },
+            "required": ["skill_name"],
+        },
+    },
+
 ]
 
 
@@ -404,6 +458,36 @@ class BrainOrchestrator:
             elif name == "system_status":
                 status_dict = await bridge.get_system_status()
                 result = json.dumps(status_dict, ensure_ascii=False)
+            elif name == "browser_control":
+                result = await bridge.browser_control(
+                    action=args.get("action", "open"),
+                    browser=args.get("browser"),
+                    url=args.get("url"),
+                    target=args.get("target"),
+                )
+            elif name == "reminder":
+                result = await bridge.reminder(
+                    action=args.get("action", "set"),
+                    date=args.get("date"),
+                    time=args.get("time"),
+                    message=args.get("message"),
+                    query=args.get("query"),
+                    reminder_id=args.get("reminder_id"),
+                )
+            elif name == "youtube_video":
+                result = await bridge.youtube_video(
+                    action=args.get("action", "play"),
+                    query=args.get("query"),
+                    url=args.get("url"),
+                    save=args.get("save", False),
+                )
+            elif name == "openclaw_skill":
+                result = await bridge.openclaw_skill(
+                    skill_name=args.get("skill_name", ""),
+                    query=args.get("query", ""),
+                    context=args,
+                )
+
             else:
                 result = f"Tool '{name}' is not recognized."
         except Exception as e:

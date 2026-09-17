@@ -203,6 +203,43 @@ class MicroserviceBridge:
         except Exception as e:
             return f"Host agent error: {e}"
 
+    async def browser_control(self, action: str = "open", browser: Optional[str] = None, url: Optional[str] = None, target: Optional[str] = None) -> str:
+        client = await self.get_client()
+        try:
+            resp = await client.post(
+                f"{HOST_AGENT_SERVICE_URL}/v1/os/browser",
+                json={"action": action, "browser": browser, "url": url, "target": target},
+            )
+            if resp.status_code == 200:
+                return resp.json().get("message", "Browser action completed.")
+            return f"Browser control error: {resp.text}"
+        except Exception as e:
+            return f"Host agent unavailable: {e}"
+
+    async def reminder(self, action: str = "set", date: Optional[str] = None, time: Optional[str] = None, message: Optional[str] = None, query: Optional[str] = None, reminder_id: Optional[str] = None) -> str:
+        client = await self.get_client()
+        try:
+            resp = await client.post(
+                f"{HOST_AGENT_SERVICE_URL}/v1/os/reminder",
+                json={"action": action, "date": date, "time": time, "message": message, "query": query, "reminder_id": reminder_id},
+            )
+            if resp.status_code == 200:
+                return resp.json().get("message", "Reminder action completed.")
+            return f"Reminder error: {resp.text}"
+        except Exception as e:
+            return f"Host agent unavailable: {e}"
+
+    async def openclaw_skill(self, skill_name: str, query: str = "", context: Optional[dict] = None) -> str:
+        try:
+            from actions.openclaw_skills import openclaw_skill as oc_skill
+            params = {"skill_name": skill_name, "query": query}
+            if context:
+                params.update(context)
+            res = await oc_skill(parameters=params)
+            return str(res)
+        except Exception as e:
+            return f"OpenClaw skill error: {e}"
+
     async def get_system_status(self) -> Dict[str, Any]:
         client = await self.get_client()
         try:
