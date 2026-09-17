@@ -75,6 +75,12 @@ SERVICES = [
         "color": "\033[92m",  # Green
     },
     {
+        "name": "AUTONOMOUS",
+        "module": "services.autonomous_agent.app",
+        "port": 8007,
+        "color": "\033[96m",
+    },
+    {
         "name": "AUDIO",
         "module": "services.audio_stream_service.app",
         "port": 8005,
@@ -235,3 +241,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

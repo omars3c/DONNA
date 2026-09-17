@@ -73,7 +73,7 @@ class AgentLoop:
             client = genai.Client(api_key=api_key)
             gemini_tools = [types.Tool(function_declarations=TOOL_DECLARATIONS)]
             chat = client.chats.create(
-                model="gemini-2.5-flash",
+                model="gemini-3.6-flash",
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
                     tools=gemini_tools,
@@ -157,4 +157,5 @@ def get_task(task_id: str):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
 
