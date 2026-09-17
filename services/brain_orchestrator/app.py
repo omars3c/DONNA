@@ -451,6 +451,7 @@ class BrainOrchestrator:
             tools=[{"function_declarations": TOOL_DECLARATIONS}],
         )
 
+        reconnect_attempts = 0
         while True:
             try:
                 print("[Brain] Connecting to Gemini Live WebSocket...")
@@ -592,7 +593,10 @@ class BrainOrchestrator:
                     report_exception("gemini_session", e, model=LIVE_MODEL)
                 self.session = None
                 self.set_state("STANDBY")
-                await asyncio.sleep(3)
+                reconnect_attempts += 1
+                backoff_delay = min(2 * (2 ** min(reconnect_attempts, 4)), 30)
+                print(f"[Brain] Next reconnect attempt in {backoff_delay}s (attempt {reconnect_attempts})...")
+                await asyncio.sleep(backoff_delay)
 
     async def send_startup_briefing(self):
         """

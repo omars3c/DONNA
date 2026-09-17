@@ -651,6 +651,14 @@ class DashboardServer:
         def _safe_filename(raw: str) -> str:
             name = Path(raw).name                          # strip path components
             name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name).strip(". ")
+            stem = Path(name).stem
+            suffix = Path(name).suffix.lower()
+            DANGEROUS_EXTENSIONS = {
+                ".exe", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".scr", ".msi", 
+                ".dll", ".com", ".pif", ".cpl", ".hta", ".wsf", ".jar", ".app"
+            }
+            if suffix in DANGEROUS_EXTENSIONS:
+                name = f"{name}.download"
             return name or "upload"
 
         if _UPLOAD_OK:
