@@ -20,7 +20,7 @@ if str(BASE_DIR) not in sys.path:
 
 from shared.config import AUTONOMOUS_PORT, AUTONOMOUS_HOST, API_KEYS_PATH, ALLOWED_ORIGINS, verify_internal_token
 from shared.error_reporter import install_sentinel
-from services.brain_orchestrator.app import TOOL_DECLARATIONS
+from shared.tool_declarations import TOOL_DECLARATIONS
 from services.brain_orchestrator.client_bridge import bridge
 
 # --- Task Manager ---

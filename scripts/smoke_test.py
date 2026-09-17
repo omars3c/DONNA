@@ -31,7 +31,9 @@ SERVICES = [
     "services.windows_host_agent.app",   # запускать реально только на Windows
     "services.audio_stream_service.app", # запускать реально только на Windows
     "services.sentinel_service.app",
+    "services.autonomous_agent.app",
     "shared.error_reporter",
+    "shared.tool_declarations",
 ]
 
 

@@ -29,6 +29,7 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+import socket
 import time
 import signal
 import secrets
@@ -92,6 +93,59 @@ SERVICES = [
 ]
 
 RESET_COLOR = "\033[0m"
+
+
+def is_port_bound(port: int, host: str = "127.0.0.1") -> bool:
+    """Check if a TCP port is currently listening."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, port)) == 0
+
+
+def free_port(port: int, service_name: str = ""):
+    """If port is occupied, find PID and terminate it so new service can bind cleanly."""
+    if not is_port_bound(port):
+        return
+
+    svc_desc = f" ({service_name})" if service_name else ""
+    if sys.platform == "win32":
+        try:
+            res = subprocess.run(
+                'netstat -ano',
+                shell=True,
+                capture_output=True,
+                text=True,
+                errors="replace",
+            )
+            killed_pids = set()
+            for line in res.stdout.strip().splitlines():
+                parts = line.strip().split()
+                if len(parts) >= 5 and parts[0].upper() == "TCP" and "LISTENING" in parts:
+                    local_addr = parts[1]
+                    if local_addr.rsplit(":", 1)[-1] == str(port):
+                        pid = parts[-1]
+                        if pid.isdigit() and int(pid) != os.getpid() and pid not in killed_pids:
+                            print(f"🧹 Port {port}{svc_desc} occupied by PID {pid}. Terminating stale process...")
+                            subprocess.run(f"taskkill /F /T /PID {pid}", shell=True, capture_output=True)
+                            killed_pids.add(pid)
+            if killed_pids:
+                time.sleep(0.5)
+        except Exception as e:
+            print(f"⚠️ Warning: Could not auto-free port {port}: {e}")
+    else:
+        try:
+            res = subprocess.run(
+                ["lsof", "-t", f"-i:{port}"],
+                capture_output=True,
+                text=True,
+            )
+            for pid in res.stdout.strip().split():
+                if pid.isdigit() and int(pid) != os.getpid():
+                    print(f"🧹 Port {port}{svc_desc} occupied by PID {pid}. Freeing port...")
+                    os.kill(int(pid), signal.SIGKILL)
+            time.sleep(0.5)
+        except Exception:
+            pass
 
 
 class MicroserviceRunner:
@@ -166,6 +220,7 @@ class MicroserviceRunner:
         env["PYTHONIOENCODING"] = "utf-8"
         env["DONNA_INTERNAL_TOKEN"] = self.internal_token
 
+        free_port(svc["port"], name)
         print(f"🚀 Starting {name} on port {svc['port']}...")
         proc = subprocess.Popen(
             cmd,
@@ -222,17 +277,23 @@ class MicroserviceRunner:
         for name, proc in self.processes.items():
             try:
                 print(f"   Terminating {name} (PID: {proc.pid})...")
-                proc.terminate()
+                if sys.platform == "win32":
+                    subprocess.run(f"taskkill /F /T /PID {proc.pid}", shell=True, capture_output=True)
+                else:
+                    proc.terminate()
             except Exception:
                 pass
 
-        time.sleep(1)
+        time.sleep(0.5)
         for name, proc in self.processes.items():
             try:
                 if proc.poll() is None:
                     proc.kill()
             except Exception:
                 pass
+
+        for svc in SERVICES:
+            free_port(svc["port"], svc["name"])
         print("👋 All services stopped.")
 
 
