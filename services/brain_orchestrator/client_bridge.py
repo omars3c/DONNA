@@ -1,4 +1,4 @@
-﻿"""
+"""
 Client bridge for dispatching tool calls from Brain Orchestrator to downstream microservices.
 """
 
