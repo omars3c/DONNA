@@ -53,8 +53,6 @@ HEADERS = {
 }
 
 _gemini_quota_failed = False
-_gemini_quota_cooldown_until = 0.0
-import time as _t_cooldown
 
 
 def _get_api_key() -> str:
@@ -69,59 +67,35 @@ def _get_api_key() -> str:
 
 # ── 1. Gemini Grounded Search (with model fallback) ──────────────────────────
 
-GEMINI_MODELS = [
-    "gemini-3.6-flash",
-    "gemini-flash-latest",
-    "gemini-3.5-flash",
-]
+from core.model_pool import model_pool, FAST_TEXT_MODEL, CANDIDATE_MODELS
+
+GEMINI_MODELS = CANDIDATE_MODELS
 
 
 def _gemini_search(query: str) -> str:
-    global _gemini_quota_failed, _gemini_quota_cooldown_until
-    if _gemini_quota_failed or _t_cooldown.monotonic() < _gemini_quota_cooldown_until:
-        raise ValueError("Gemini API quota cooldown active.")
+    global _gemini_quota_failed
+    if _gemini_quota_failed:
+        raise ValueError("Gemini API quota already exceeded in this session.")
 
-    key = _get_api_key()
-    if not key:
-        raise ValueError("No Gemini API key available.")
-
-    from google import genai
-
-    client = genai.Client(api_key=key)
-
-    last_err = None
-    for model_name in GEMINI_MODELS:
-        try:
-            chat = client.chats.create(
-                model=model_name,
-                config={"tools": [{"google_search": {}}]},
-            )
-            response = chat.send_message(query)
-
-            text = ""
-            if response.candidates and len(response.candidates) > 0:
-                first_cand = response.candidates[0]
-                if first_cand.content and first_cand.content.parts:
-                    for part in first_cand.content.parts:
-                        if hasattr(part, "text") and part.text:
-                            text += part.text
-
-            text = text.strip()
-            if text:
-                return text
-        except Exception as e:
-            last_err = e
-            err_str = str(e).lower()
-            if "resource_exhausted" in err_str or "429" in err_str or "quota" in err_str:
-                _gemini_quota_failed = True
-                _gemini_quota_cooldown_until = _t_cooldown.monotonic() + 300.0
-                raise ValueError("Gemini API quota exhausted.") from e
-            # If model is retired / unavailable (404), seamlessly continue to fallback model
-            if "no longer available" in err_str or "404" in err_str:
-                continue
-            continue
-
-    raise ValueError(f"Gemini search failed: {last_err}")
+    try:
+        response = model_pool.generate_content(
+            contents=query,
+            config={"tools": [{"google_search": {}}]},
+        )
+        text = ""
+        if response and response.candidates and len(response.candidates) > 0:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "text") and part.text:
+                    text += part.text
+        text = text.strip()
+        if text:
+            return text
+        raise ValueError("Empty response from grounded search.")
+    except Exception as e:
+        err_str = str(e).lower()
+        if "resource_exhausted" in err_str or "429" in err_str or "quota" in err_str:
+            _gemini_quota_failed = True
+        raise ValueError(f"Gemini search failed: {e}") from e
 
 
 # ── 2. Wikipedia API Search (Russian + English) ──────────────────────────────
@@ -169,14 +143,9 @@ def _wikipedia_search(query: str) -> Optional[dict]:
 def _ddg_library_search(query: str, max_results: int = 6) -> list[dict]:
     try:
         try:
-            from duckduckgo_search import DDGS
+            from ddgs import DDGS
         except ImportError:
-            try:
-                from ddgs import DDGS  # type: ignore
-            except ImportError:
-                DDGS = None
-        if DDGS is None:
-            return []
+            from duckduckgo_search import DDGS
 
         results = []
         is_cyrillic = bool(re.search(r"[а-яА-ЯёЁ]", query))
@@ -212,8 +181,7 @@ def _ddg_lite_search(query: str, max_results: int = 6) -> list[dict]:
                 link_el = tr.select_one("a.result-link")
                 if link_el:
                     title = link_el.get_text(strip=True)
-                    href_val = link_el.get("href", "")
-                    url_link = str(href_val) if href_val else ""
+                    url_link = link_el.get("href", "")
                     if "duckduckgo.com/l/?uddg=" in url_link:
                         parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url_link).query)
                         if "uddg" in parsed:
@@ -247,8 +215,7 @@ def _ddg_html_search(query: str, max_results: int = 6) -> list[dict]:
                 snippet_el = el.select_one(".result__snippet")
                 if title_el and snippet_el:
                     title = title_el.get_text(strip=True)
-                    href_val = title_el.get("href", "")
-                    url_link = str(href_val) if href_val else ""
+                    url_link = title_el.get("href", "")
                     if "duckduckgo.com/l/?uddg=" in url_link:
                         parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url_link).query)
                         if "uddg" in parsed:
@@ -287,15 +254,9 @@ def _ddg_news(query: str, max_results: int = 8) -> list[dict]:
     if not results:
         try:
             try:
-                from duckduckgo_search import DDGS
+                from ddgs import DDGS
             except ImportError:
-                try:
-                    from ddgs import DDGS  # type: ignore
-                except ImportError:
-                    DDGS = None
-
-            if DDGS is None:
-                return results
+                from duckduckgo_search import DDGS
 
             region = "ru-ru" if is_cyrillic else "wt-wt"
             with DDGS() as ddgs:
@@ -385,48 +346,33 @@ def _format_news(query: str, results: list[dict]) -> str:
 
 def _gemini_headlines(n: int = 5) -> tuple[list[str], str]:
     """Fetches current headlines via Gemini grounded search or DDG news."""
-    global _gemini_quota_failed, _gemini_quota_cooldown_until
-    if not _gemini_quota_failed and _t_cooldown.monotonic() >= _gemini_quota_cooldown_until:
+    global _gemini_quota_failed
+    if not _gemini_quota_failed:
         try:
-            key = _get_api_key()
-            if key:
-                from google import genai
-                client = genai.Client(api_key=key)
-                for m in GEMINI_MODELS:
-                    try:
-                        chat = client.chats.create(
-                            model=m,
-                            config={"tools": [{"google_search": {}}]},
-                        )
-                        response = chat.send_message(
-                            f"Current world and local news: {n} headlines in Russian. Numbered list, titles only."
-                        )
-                        raw = ""
-                        if response.candidates and len(response.candidates) > 0:
-                            first_cand = response.candidates[0]
-                            if first_cand.content and first_cand.content.parts:
-                                for part in first_cand.content.parts:
-                                    if hasattr(part, "text") and part.text:
-                                        raw += part.text
-                        raw = raw.strip()
-                        if raw:
-                            headlines = []
-                            for line in raw.split("\n"):
-                                line = line.strip()
-                                if re.match(r"^[\d]+[.\)\-]", line):
-                                    clean = re.sub(r"^[\d]+[.\)\-]\s*", "", line)
-                                    clean = re.sub(r"^\*+\s*", "", clean).strip()
-                                    if len(clean) > 10:
-                                        headlines.append(clean)
-                            if headlines:
-                                return headlines[:n], raw
-                    except Exception as e:
-                        if "429" in str(e) or "quota" in str(e).lower() or "resource_exhausted" in str(e).lower():
-                            _gemini_quota_failed = True
-                            break
-                        continue
-        except Exception:
-            pass
+            response = model_pool.generate_content(
+                contents=f"Current world and local news: {n} headlines in Russian. Numbered list, titles only.",
+                config={"tools": [{"google_search": {}}]},
+            )
+            raw = ""
+            if response and response.candidates:
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, "text") and part.text:
+                        raw += part.text
+            raw = raw.strip()
+            if raw:
+                headlines = []
+                for line in raw.split("\n"):
+                    line = line.strip()
+                    if re.match(r"^[\d]+[.\)\-]", line):
+                        clean = re.sub(r"^[\d]+[.\)\-]\s*", "", line)
+                        clean = re.sub(r"^\*+\s*", "", clean).strip()
+                        if len(clean) > 10:
+                            headlines.append(clean)
+                if headlines:
+                    return headlines[:n], raw
+        except Exception as e:
+            if "429" in str(e) or "quota" in str(e).lower() or "resource_exhausted" in str(e).lower():
+                _gemini_quota_failed = True
 
     news_items = _ddg_news("главные новости сегодня", max_results=n)
     headlines = [item["title"] for item in news_items if item.get("title")]

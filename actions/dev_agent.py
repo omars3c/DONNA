@@ -16,28 +16,19 @@ BASE_DIR         = get_base_dir()
 API_CONFIG_PATH  = BASE_DIR / "config" / "api_keys.json"
 PROJECTS_DIR     = Path.home() / "Desktop" / "JarvisProjects"
 MAX_FIX_ATTEMPTS = 5
-MODEL_PLANNER    = "gemini-3.6-flash"
-MODEL_WRITER     = "gemini-3.6-flash"
+from core.model_pool import model_pool, FAST_TEXT_MODEL
+
+MODEL_PLANNER    = FAST_TEXT_MODEL
+MODEL_WRITER     = FAST_TEXT_MODEL
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    return model_pool.get_active_key()
 
 
 def _get_model(model_name: str):
-    from google import genai
-    _c = genai.Client(api_key=_get_api_key())
-
     class _W:
         def generate_content(self, contents):
-            for m in [model_name, "gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
-                try:
-                    resp = _c.models.generate_content(model=m, contents=contents)
-                    if resp and resp.text:
-                        return resp
-                except Exception:
-                    continue
-            return _c.models.generate_content(model="gemini-3.6-flash", contents=contents)
+            return model_pool.generate_content(contents=contents, model=model_name)
 
     return _W()
 
@@ -119,10 +110,10 @@ Description: {description}
 Return ONLY valid JSON — no markdown, no explanation:
 {{
   "project_name": "snake_case_name",
-  "entry_point": "run_microservices.py",
+  "entry_point": "main.py",
   "files": [
     {{
-      "path": "run_microservices.py",
+      "path": "main.py",
       "description": "Entry point — what it does and which modules it imports",
       "imports": ["utils.helpers", "core.engine"]
     }},
@@ -132,7 +123,7 @@ Return ONLY valid JSON — no markdown, no explanation:
       "imports": []
     }}
   ],
-  "run_command": "python run_microservices.py",
+  "run_command": "python main.py",
   "dependencies": ["requests"]
 }}
 
@@ -473,7 +464,7 @@ def _build_project(
     project_dir.mkdir(parents=True, exist_ok=True)
 
     files        = plan.get("files", [])
-    entry_point  = plan.get("entry_point", "run_microservices.py")
+    entry_point  = plan.get("entry_point", "main.py")
     run_command  = plan.get("run_command", f"python {entry_point}")
     dependencies = plan.get("dependencies", [])
 

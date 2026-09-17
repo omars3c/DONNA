@@ -15,28 +15,19 @@ BASE_DIR           = get_base_dir()
 API_CONFIG_PATH    = BASE_DIR / "config" / "api_keys.json"
 DESKTOP            = Path.home() / "Desktop"
 MAX_BUILD_ATTEMPTS = 3
-GEMINI_MODEL       = "gemini-3.6-flash"
+from core.model_pool import model_pool, FAST_TEXT_MODEL
+
+GEMINI_MODEL       = FAST_TEXT_MODEL
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    return model_pool.get_active_key()
 
 
 def _get_gemini(model: str = GEMINI_MODEL):
-    from google import genai
-    _c = genai.Client(api_key=_get_api_key())
-
     class _W:
         def generate_content(self, contents):
-            for m in [model, "gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
-                try:
-                    resp = _c.models.generate_content(model=m, contents=contents)
-                    if resp and resp.text:
-                        return resp
-                except Exception:
-                    continue
-            return _c.models.generate_content(model="gemini-3.6-flash", contents=contents)
+            return model_pool.generate_content(contents=contents, model=model)
 
     return _W()
 
@@ -495,7 +486,7 @@ Be specific and actionable. If you see an error message, quote it exactly."""
         ]
 
         response = client.models.generate_content(
-            model="gemini-3.6-flash",
+            model="gemini-2.5-flash",
             contents=contents,
         )
 

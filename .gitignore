@@ -60,7 +60,7 @@ pnpm-debug.log*
 *.dmp
 *.dump
 *.stackdump
-core
+core.[0-9]*
 
 # ── 4. Python Bytecode, Caches & Virtual Environments ────────────────────────
 __pycache__/

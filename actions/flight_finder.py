@@ -18,9 +18,10 @@ BASE_DIR        = _get_base_dir()
 API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 
 
+from core.model_pool import model_pool, FAST_TEXT_MODEL
+
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    return model_pool.get_active_key()
 
 _MONTH_MAP: dict[str, int] = {
 
@@ -62,23 +63,13 @@ def _parse_date(raw: str) -> str:
             return val.strftime("%Y-%m-%d")
 
     try:
-        from google import genai as _genai
-        _client  = _genai.Client(api_key=_get_api_key())
-        response = None
-        for m in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
-            try:
-                response = _client.models.generate_content(
-                    model=m,
-                    contents=(
-                        f"Today is {today.strftime('%Y-%m-%d')}. "
-                        f"Convert this date expression to YYYY-MM-DD: '{raw}'. "
-                        f"Return ONLY the date string, nothing else."
-                    )
-                )
-                if response and response.text:
-                    break
-            except Exception:
-                continue
+        response = model_pool.generate_content(
+            contents=(
+                f"Today is {today.strftime('%Y-%m-%d')}. "
+                f"Convert this date expression to YYYY-MM-DD: '{raw}'. "
+                f"Return ONLY the date string, nothing else."
+            )
+        )
         result = (response.text if response else "").strip()
         if re.match(r"\d{4}-\d{2}-\d{2}", result):
             return result
@@ -175,24 +166,17 @@ def _parse_flights_with_gemini(
     )
 
     try:
-        response = None
-        for m in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
-            try:
-                response = _client.models.generate_content(
-                    model=m,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=(
-                            "You are a flight data extraction expert. "
-                            "Extract flight information from raw webpage text. "
-                            "Return ONLY valid JSON — no markdown, no explanation."
-                        )
-                    ),
+        from google.genai import types
+        response = model_pool.generate_content(
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=(
+                    "You are a flight data extraction expert. "
+                    "Extract flight information from raw webpage text. "
+                    "Return ONLY valid JSON — no markdown, no explanation."
                 )
-                if response and response.text:
-                    break
-            except Exception:
-                continue
+            ),
+        )
         text     = re.sub(r"```(?:json)?", "", response.text).strip().rstrip("`").strip()
         flights  = json.loads(text)
         return flights if isinstance(flights, list) else []

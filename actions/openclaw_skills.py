@@ -17,12 +17,14 @@ async def openclaw_skill(
     session_memory=None,
 ) -> str:
     params = parameters or {}
-    skill_name = params.get("skill_name", "").strip().lower()
-    query      = params.get("query", "").strip()
+    skill_name = params.get("skill_name", "").strip()
+    query      = params.get("query", "").strip() or params.get("task", "").strip()
+
+    if not skill_name and query:
+        skill_name = query
 
     if not skill_name:
-        skills = openclaw_engine.list_skills()
-        return f"Please specify a skill_name. Available skills ({len(skills)}): {', '.join([s['name'] for s in skills[:20]])}..."
+        return "Укажите название навыка или задачу (например, 'diagram-maker', 'summarize', 'weather')."
 
-    result = await openclaw_engine.execute_skill_action(skill_name, query, context=params)
+    result = await openclaw_engine.execute_skill_action(skill_name, query or skill_name, context=params)
     return result

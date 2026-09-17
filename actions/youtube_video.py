@@ -57,9 +57,10 @@ HEADERS = {
 _YT_VIDEO_FILTER = "EgIQAQ%3D%3D"
 
 
+from core.model_pool import model_pool, FAST_TEXT_MODEL
+
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    return model_pool.get_active_key()
 
 
 def _open_url(url: str) -> None:
@@ -167,33 +168,26 @@ def _get_transcript(video_id: str) -> str | None:
 
 
 def _summarize_with_gemini(transcript: str, video_url: str) -> str:
-    from google import genai as _genai
     from google.genai import types
 
-    _client = _genai.Client(api_key=_get_api_key())
     max_chars = 80000
     truncated = transcript[:max_chars] + ("..." if len(transcript) > max_chars else "")
-    response = None
-    for m in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
-        try:
-            response = _client.models.generate_content(
-                model=m,
-                contents=f"Please summarize this YouTube video transcript:\n\n{truncated}",
-                config=types.GenerateContentConfig(
-                    system_instruction=(
-                        "You are D.O.N.N.A., an AI assistant. "
-                        "Summarize YouTube video transcripts clearly and concisely. "
-                        "Structure: 1-sentence overview, then 3-5 key points. "
-                        "Be direct. Address the user politely. "
-                        "Match the language of the transcript."
-                    )
+    try:
+        response = model_pool.generate_content(
+            contents=f"Please summarize this YouTube video transcript:\n\n{truncated}",
+            config=types.GenerateContentConfig(
+                system_instruction=(
+                    "You are D.O.N.N.A., an AI assistant. "
+                    "Summarize YouTube video transcripts clearly and concisely. "
+                    "Structure: 1-sentence overview, then 3-5 key points. "
+                    "Be direct. Address the user politely. "
+                    "Match the language of the transcript."
                 )
-            )
-            if response and response.text:
-                break
-        except Exception:
-            continue
-    return response.text.strip() if response else "Не удалось сгенерировать выжимку видео."
+            ),
+        )
+        return response.text.strip() if response and response.text else "Не удалось сгенерировать выжимку видео."
+    except Exception as e:
+        return f"Ошибка суммаризации: {e}"
 
 
 def _save_summary(content: str, video_url: str) -> str:

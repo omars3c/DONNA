@@ -27,24 +27,16 @@ from datetime import datetime
 
 def _get_api_key() -> str:
     config_path = Path(__file__).resolve().parent.parent / "config" / "api_keys.json"
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+from core.model_pool import model_pool, FAST_TEXT_MODEL
+
+def _get_api_key() -> str:
+    return model_pool.get_active_key()
 
 
 def _gemini_client():
-    from google import genai
-    _c = genai.Client(api_key=_get_api_key())
-
     class _W:
         def generate_content(self, contents):
-            for m in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
-                try:
-                    resp = _c.models.generate_content(model=m, contents=contents)
-                    if resp and resp.text:
-                        return resp
-                except Exception:
-                    continue
-            return _c.models.generate_content(model="gemini-3.6-flash", contents=contents)
+            return model_pool.generate_content(contents=contents)
 
     return _W()
 
