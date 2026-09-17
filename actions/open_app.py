@@ -428,7 +428,7 @@ def _launch_windows(app_name: str) -> LaunchResult:
     browser_path = _get_default_browser_path()
     if browser_path:
         try:
-            proc = subprocess.Popen([browser_path, app_name], shell=False)
+            proc = subprocess.Popen([browser_path, f"https://duckduckgo.com/?q={app_name.replace(" ", "+")}" if " " in app_name or "." not in app_name else (app_name if app_name.startswith("http") else f"https://{app_name}")], shell=False)
             if _proc_is_alive(proc, wait_sec=0.8):
                 return LaunchResult(ok=True, confirmed=True, detail=f"Browser omnibox: {browser_path} '{app_name}'")
             # Browser started but might have delegated to existing instance — still optimistic
@@ -679,3 +679,5 @@ def open_app(
             context={"app_name": app_name, "normalized": normalized},
         )
         return f"Failed to open {app_name}: {e}"
+
+

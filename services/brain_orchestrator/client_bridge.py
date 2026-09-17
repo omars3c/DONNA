@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional
 from shared.config import (
     CORTEX_SERVICE_URL,
     RESEARCH_SERVICE_URL,
+    AUTONOMOUS_SERVICE_URL,
     HOST_AGENT_SERVICE_URL,
 )
 
@@ -197,4 +198,5 @@ class MicroserviceBridge:
 
 
 bridge = MicroserviceBridge()
+
 
