@@ -481,7 +481,7 @@ def computer_control(
         if action == "smart_type":
             return _smart_type(
                 params.get("text", ""),
-                clear_first=params.get("clear_first", True),
+                clear_first=bool(params.get("clear_first", True)),
             )
 
         if action in ("click", "left_click"):

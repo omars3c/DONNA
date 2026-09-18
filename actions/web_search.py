@@ -181,7 +181,8 @@ def _ddg_lite_search(query: str, max_results: int = 6) -> list[dict]:
                 link_el = tr.select_one("a.result-link")
                 if link_el:
                     title = link_el.get_text(strip=True)
-                    url_link = link_el.get("href", "")
+                    raw_href = link_el.get("href")
+                    url_link = str(raw_href) if raw_href is not None else ""
                     if "duckduckgo.com/l/?uddg=" in url_link:
                         parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url_link).query)
                         if "uddg" in parsed:
@@ -215,7 +216,8 @@ def _ddg_html_search(query: str, max_results: int = 6) -> list[dict]:
                 snippet_el = el.select_one(".result__snippet")
                 if title_el and snippet_el:
                     title = title_el.get_text(strip=True)
-                    url_link = title_el.get("href", "")
+                    raw_href = title_el.get("href")
+                    url_link = str(raw_href) if raw_href is not None else ""
                     if "duckduckgo.com/l/?uddg=" in url_link:
                         parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url_link).query)
                         if "uddg" in parsed:
@@ -518,7 +520,13 @@ def web_search(
 
     query = str(params.get("query") or "").strip()
     mode = str(params.get("mode") or "search").lower().strip()
-    items = params.get("items") or []
+    raw_items = params.get("items")
+    if isinstance(raw_items, list):
+        items: list[str] = [str(x) for x in raw_items]
+    elif isinstance(raw_items, str) and raw_items.strip():
+        items: list[str] = [x.strip() for x in raw_items.split(",") if x.strip()]
+    else:
+        items: list[str] = []
     aspect = str(params.get("aspect") or "general").strip() or "general"
 
     if not query and not items:
