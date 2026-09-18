@@ -67,7 +67,8 @@ def get_pids_on_port(port: int) -> Set[int]:
 
 def free_port(port: int, service_name: str = "", verbose: bool = True) -> bool:
     """
-    Terminates any stale processes occupying the target port.
+    Terminates any stale processes occupying the target port, then waits
+    until the OS fully releases the socket (handles TIME_WAIT on Windows).
     Returns True if port is free, False if occupied and could not be freed.
     """
     pids = get_pids_on_port(port)
@@ -86,8 +87,27 @@ def free_port(port: int, service_name: str = "", verbose: bool = True) -> bool:
             except Exception:
                 pass
 
-    if pids:
+    # Wait for the OS to release the socket (TIME_WAIT on Windows can linger).
+    # Poll up to 3 seconds in 0.5s increments.
+    for attempt in range(6):
         time.sleep(0.5)
+        remaining_pids = get_pids_on_port(port)
+        if len(remaining_pids) == 0 and not is_port_in_use(port):
+            return True
+        if verbose and attempt == 0 and pids:
+            print(f"⏳ Waiting for port {port}{svc_label} to be released by OS...")
 
-    remaining = get_pids_on_port(port)
-    return len(remaining) == 0
+    # Last-resort: try binding with SO_REUSEADDR — uvicorn does the same internally
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if sys.platform == "win32":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        else:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        probe.bind(("127.0.0.1", port))
+        probe.close()
+        return True
+    except OSError:
+        if verbose:
+            print(f"⚠️  Port {port}{svc_label} still in use after cleanup — will retry at bind time.")
+        return False
