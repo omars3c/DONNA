@@ -4,7 +4,7 @@ Configuration settings and service endpoints for DONNA Microservices.
 
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Dict
 from fastapi import Request, HTTPException
 
 # Base Paths
@@ -61,6 +61,7 @@ ALLOWED_ORIGINS: List[str] = [
 
 INTERNAL_TOKEN_HEADER = "X-Donna-Internal-Token"
 INTERNAL_API_TOKEN = os.getenv("DONNA_INTERNAL_TOKEN", "")
+INTERNAL_TOKEN = INTERNAL_API_TOKEN
 
 
 async def verify_internal_token(request: Request):
@@ -87,7 +88,7 @@ async def verify_internal_token(request: Request):
     return True
 
 
-def get_internal_headers(extra_headers: dict = None) -> dict:
+def get_internal_headers(extra_headers: Optional[Dict[str, str]] = None) -> dict:
     """Returns headers dict populated with X-Donna-Internal-Token if configured."""
     headers = dict(extra_headers) if extra_headers else {}
     token = os.getenv("DONNA_INTERNAL_TOKEN", INTERNAL_API_TOKEN)
