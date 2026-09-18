@@ -25,17 +25,29 @@ BASE_DIR = get_base_dir()
 CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 
 # Operational models on Google AI Studio Free Tier
-FAST_TEXT_MODEL = "gemini-2.0-flash"
+FAST_TEXT_MODEL = "gemini-3.6-flash"
 LITE_TEXT_MODEL = "gemini-2.5-flash-lite"
-LEGACY_FALLBACK = "gemini-1.5-flash"
+BACKUP_TEXT_MODEL = "gemini-3.7-flash"
+LEGACY_FALLBACK = "gemini-3.6-flash"
 LIVE_AUDIO_MODEL = "models/gemini-2.5-flash-native-audio-preview-12-2025"
 
 CANDIDATE_MODELS = [
     FAST_TEXT_MODEL,
+    "gemini-3.8-flash",
+    BACKUP_TEXT_MODEL,
     LITE_TEXT_MODEL,
-    LEGACY_FALLBACK,
-    "gemini-flash-latest",
 ]
+
+DEPRECATED_MODEL_MAP = {
+    "gemini-1.5-flash": "gemini-3.6-flash",
+    "gemini-1.5-flash-8b": "gemini-2.5-flash-lite",
+    "gemini-1.5-pro": "gemini-3.8-flash",
+    "gemini-2.0-flash": "gemini-3.6-flash",
+    "gemini-2.0-flash-exp": "gemini-3.6-flash",
+    "gemini-2.0-flash-lite": "gemini-2.5-flash-lite",
+    "gemini-2.5-flash": "gemini-3.6-flash",
+    "gemini-flash-latest": "gemini-3.6-flash",
+}
 
 
 class KeyStatus:
@@ -176,11 +188,14 @@ class GeminiKeyPool:
         config: Optional[Any] = None,
         max_retries: int = 3,
     ) -> Any:
-        target_models = [model] if model else CANDIDATE_MODELS
-        # Filter None
-        target_models = [m for m in target_models if m]
-        if FAST_TEXT_MODEL not in target_models:
-            target_models.append(FAST_TEXT_MODEL)
+        if model:
+            mapped_model = DEPRECATED_MODEL_MAP.get(model, model)
+            target_models = [mapped_model]
+            for cm in CANDIDATE_MODELS:
+                if cm not in target_models:
+                    target_models.append(cm)
+        else:
+            target_models = list(CANDIDATE_MODELS)
 
         last_err: Optional[Exception] = None
 
@@ -210,8 +225,9 @@ class GeminiKeyPool:
                         # Rotate to next key if available
                         self.rotate_key(reason=f"429 on {model_name}")
                         break  # Break inner model loop to retry with new key
-                    elif "404" in err_str or "not found" in err_str:
-                        # Model not available in this tier, try next fallback model
+                    elif "404" in err_str or "not found" in err_str or "no longer available" in err_str:
+                        # Model not available in this tier or deprecated, try next fallback model
+                        logger.info(f"[ModelPool] Model '{model_name}' not available (404/retired), trying fallback...")
                         continue
                     else:
                         # Other API or network error

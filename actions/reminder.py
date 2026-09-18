@@ -238,10 +238,11 @@ def _delete_system_task(task_name: str) -> bool:
 # ── Main Entrypoint ───────────────────────────────────────────────────────────
 
 def reminder(
-    parameters: dict,
+    parameters: dict = None,
     response=None,
     player=None,
     session_memory=None,
+    **kwargs,
 ) -> str:
     """
     Manage reminders: set, list, cancel, cancel_all.
@@ -252,7 +253,25 @@ def reminder(
       message: text description
       query / reminder_id: for cancellation
     """
-    params = parameters or {}
+    if isinstance(parameters, str):
+        parameters_str = parameters.strip()
+        if parameters_str.startswith("{") and parameters_str.endswith("}"):
+            try:
+                parsed = json.loads(parameters_str)
+                params = parsed if isinstance(parsed, dict) else {"action": parameters_str}
+            except Exception:
+                params = {"action": parameters_str}
+        else:
+            params = {"action": parameters_str}
+    elif isinstance(parameters, dict):
+        params = dict(parameters)
+    else:
+        params = {}
+
+    for k, v in kwargs.items():
+        if k not in params or params[k] is None:
+            params[k] = v
+
     action = (params.get("action") or "set").lower().strip()
 
     # ── 1. LIST REMINDERS ─────────────────────────────────────────────────────

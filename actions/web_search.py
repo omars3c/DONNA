@@ -491,12 +491,31 @@ def _compare(items: list[str], aspect: str) -> str:
 # ── Public Entry Point ────────────────────────────────────────────────────────
 
 def web_search(
-    parameters: dict,
+    parameters: dict = None,
     response=None,
     player=None,
     session_memory=None,
+    **kwargs,
 ) -> str:
-    params = parameters or {}
+    if isinstance(parameters, str):
+        parameters_str = parameters.strip()
+        if parameters_str.startswith("{") and parameters_str.endswith("}"):
+            try:
+                parsed = json.loads(parameters_str)
+                params = parsed if isinstance(parsed, dict) else {"query": parameters_str}
+            except Exception:
+                params = {"query": parameters_str}
+        else:
+            params = {"query": parameters_str}
+    elif isinstance(parameters, dict):
+        params = dict(parameters)
+    else:
+        params = {}
+
+    for k, v in kwargs.items():
+        if k not in params or params[k] is None:
+            params[k] = v
+
     query = str(params.get("query") or "").strip()
     mode = str(params.get("mode") or "search").lower().strip()
     items = params.get("items") or []

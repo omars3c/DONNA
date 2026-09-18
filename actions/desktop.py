@@ -431,6 +431,7 @@ def desktop_control(
     response=None,
     player=None,
     session_memory=None,
+    **kwargs,
 ) -> str:
     """
     parameters:
@@ -442,7 +443,25 @@ def desktop_control(
         mode   : 'by_type' or 'by_date' for 'organize'
         task   : natural language description for AI-powered actions
     """
-    params = parameters or {}
+    if isinstance(parameters, str):
+        parameters_str = parameters.strip()
+        if parameters_str.startswith("{") and parameters_str.endswith("}"):
+            try:
+                parsed = json.loads(parameters_str)
+                params = parsed if isinstance(parsed, dict) else {"action": parameters_str}
+            except Exception:
+                params = {"action": parameters_str}
+        else:
+            params = {"action": parameters_str}
+    elif isinstance(parameters, dict):
+        params = dict(parameters)
+    else:
+        params = {}
+
+    for k, v in kwargs.items():
+        if k not in params or params[k] is None:
+            params[k] = v
+
     action = str(params.get("action") or "").lower().strip()
     task   = str(params.get("task") or "").strip()
 

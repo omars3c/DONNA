@@ -489,16 +489,17 @@ def _launch_macos(app_name: str) -> bool:
             pass
 
     try:
-        import pyautogui  # type: ignore
-        pyautogui.hotkey("command", "space")
-        time.sleep(0.6)
-        pyautogui.write(app_name, interval=0.05)
-        time.sleep(0.8)
-        pyautogui.press("enter")
-        time.sleep(1.5)
-        return True
-    except Exception as e:
-        print(f"[open_app] Spotlight failed: {e}")
+        escaped_name = app_name.replace("'", "\\'")
+        query = f"kMDItemContentType == 'com.apple.application-bundle' && (kMDItemFSName == '{escaped_name}.app'c || kMDItemDisplayName == '{escaped_name}'c)"
+        r = subprocess.run(["mdfind", query], capture_output=True, text=True, timeout=5)
+        paths = [p for p in r.stdout.splitlines() if p.strip()]
+        if paths:
+            res = subprocess.run(["open", paths[0].strip()], capture_output=True, timeout=8)
+            if res.returncode == 0:
+                time.sleep(0.5)
+                return True
+    except Exception:
+        pass
 
     return False
 
@@ -586,9 +587,29 @@ def open_app(
     response=None,
     player=None,
     session_memory=None,
+    **kwargs,
 ) -> str:
-    params = parameters or {}
-    app_name = params.get("app_name", "").strip()
+    if isinstance(parameters, str):
+        parameters_str = parameters.strip()
+        if parameters_str.startswith("{") and parameters_str.endswith("}"):
+            try:
+                parsed = json.loads(parameters_str)
+                params = parsed if isinstance(parsed, dict) else {"app_name": parameters_str}
+            except Exception:
+                params = {"app_name": parameters_str}
+        else:
+            params = {"app_name": parameters_str}
+    elif isinstance(parameters, dict):
+        params = dict(parameters)
+    else:
+        params = {}
+
+    for k, v in kwargs.items():
+        if k not in params or params[k] is None:
+            params[k] = v
+
+    raw_name = params.get("app_name") or params.get("name") or params.get("app")
+    app_name = str(raw_name).strip() if raw_name is not None else ""
     # Whether the previous call returned AMBIGUOUS_BROWSER and the user has now
     # chosen a specific browser (so we should save it as the default).
     pending_disambiguation: bool = bool(params.get("pending_disambiguation", False))

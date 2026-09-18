@@ -44,7 +44,7 @@ class TestJarvisCoreArchitecture(unittest.TestCase):
             self.assertIn("properties", params)
 
     def test_03_model_pool_defaults_and_rotation(self):
-        self.assertEqual(FAST_TEXT_MODEL, "gemini-2.0-flash")
+        self.assertEqual(FAST_TEXT_MODEL, "gemini-3.6-flash")
         active_key = model_pool.get_active_key()
         self.assertTrue(bool(active_key), "Model pool must have an active Gemini API key")
 

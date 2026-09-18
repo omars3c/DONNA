@@ -949,8 +949,28 @@ def browser_control(
     response=None,
     player=None,
     session_memory=None,
+    **kwargs,
 ) -> str:
-    params  = parameters or {}
+    if isinstance(parameters, str):
+        parameters_str = parameters.strip()
+        if parameters_str.startswith("{") and parameters_str.endswith("}"):
+            try:
+                import json
+                parsed = json.loads(parameters_str)
+                params = parsed if isinstance(parsed, dict) else {"action": parameters_str}
+            except Exception:
+                params = {"action": parameters_str}
+        else:
+            params = {"action": parameters_str}
+    elif isinstance(parameters, dict):
+        params = dict(parameters)
+    else:
+        params = {}
+
+    for k, v in kwargs.items():
+        if k not in params or params[k] is None:
+            params[k] = v
+
     raw_action = params.get("action")
     action  = raw_action.lower().strip() if isinstance(raw_action, str) else ""
     raw_browser = params.get("browser")
