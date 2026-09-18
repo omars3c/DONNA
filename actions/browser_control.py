@@ -945,7 +945,7 @@ class _SessionRegistry:
 _registry = _SessionRegistry()
 
 def browser_control(
-    parameters:    dict = None,
+    parameters: Optional[Any] = None,
     response=None,
     player=None,
     session_memory=None,

@@ -8,6 +8,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import quote_plus
+from typing import Optional, Any
 
 try:
     import pyautogui
@@ -413,13 +414,32 @@ _ACTION_MAP = {
 
 
 def youtube_video(
-    parameters:     dict,
+    parameters:     Optional[Any] = None,
     response=None,
     player=None,
     session_memory=None,
     speak=None,
+    **kwargs,
 ) -> str:
-    params = parameters or {}
+    if isinstance(parameters, str):
+        parameters_str = parameters.strip()
+        if parameters_str.startswith("{") and parameters_str.endswith("}"):
+            try:
+                parsed = json.loads(parameters_str)
+                params = parsed if isinstance(parsed, dict) else {"query": parameters_str}
+            except Exception:
+                params = {"query": parameters_str}
+        else:
+            params = {"query": parameters_str}
+    elif isinstance(parameters, dict):
+        params = dict(parameters)
+    else:
+        params = {}
+
+    for k, v in kwargs.items():
+        if k not in params or params[k] is None:
+            params[k] = v
+
     action = str(params.get("action") or "play").lower().strip()
 
     if player:

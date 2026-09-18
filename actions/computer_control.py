@@ -15,6 +15,7 @@ else:
 import time
 import random
 from pathlib import Path
+from typing import Optional, Any
 
 try:
     import pyautogui
@@ -395,7 +396,7 @@ def _screen_find(description: str) -> tuple[int, int] | None:
     return None
 
 def computer_control(
-    parameters: dict = None,
+    parameters: Optional[Any] = None,
     response=None,
     player=None,
     session_memory=None,

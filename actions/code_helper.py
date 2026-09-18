@@ -4,6 +4,7 @@ import json
 import re
 import time
 from pathlib import Path
+from typing import Optional, Any
 
 
 def get_base_dir():
@@ -485,9 +486,9 @@ Be specific and actionable. If you see an error message, quote it exactly."""
             analysis_prompt,
         ]
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
+        response = model_pool.generate_content(
             contents=contents,
+            model="gemini-3.6-flash",
         )
 
         analysis = response.text.strip()
@@ -520,11 +521,12 @@ Be specific and actionable. If you see an error message, quote it exactly."""
 
 
 def code_helper(
-    parameters: dict,
+    parameters: Optional[Any] = None,
     response=None,
     player=None,
     session_memory=None,
-    speak=None
+    speak=None,
+    **kwargs,
 ) -> str:
     """
     Called from main.py.
@@ -539,7 +541,25 @@ def code_helper(
         args        : CLI argument list for run/build
         timeout     : Execution timeout in seconds (default: 30)
     """
-    p           = parameters or {}
+    if isinstance(parameters, str):
+        parameters_str = parameters.strip()
+        if parameters_str.startswith("{") and parameters_str.endswith("}"):
+            try:
+                parsed = json.loads(parameters_str)
+                p = parsed if isinstance(parsed, dict) else {"description": parameters_str}
+            except Exception:
+                p = {"description": parameters_str}
+        else:
+            p = {"description": parameters_str}
+    elif isinstance(parameters, dict):
+        p = dict(parameters)
+    else:
+        p = {}
+
+    for k, v in kwargs.items():
+        if k not in p or p[k] is None:
+            p[k] = v
+
     action      = p.get("action", "auto").lower().strip()
     description = p.get("description", "").strip()
     language    = p.get("language", "python").strip()

@@ -238,7 +238,7 @@ def _delete_system_task(task_name: str) -> bool:
 # ── Main Entrypoint ───────────────────────────────────────────────────────────
 
 def reminder(
-    parameters: dict = None,
+    parameters: Optional[Any] = None,
     response=None,
     player=None,
     session_memory=None,

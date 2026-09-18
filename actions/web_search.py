@@ -491,7 +491,7 @@ def _compare(items: list[str], aspect: str) -> str:
 # ── Public Entry Point ────────────────────────────────────────────────────────
 
 def web_search(
-    parameters: dict = None,
+    parameters: Optional[Any] = None,
     response=None,
     player=None,
     session_memory=None,
