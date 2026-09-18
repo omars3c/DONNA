@@ -49,10 +49,23 @@ class GenericResponse(BaseModel):
 
 
 class BrowserActionRequest(BaseModel):
-    action: str = "open"  # open | close | close_all | switch | list_browsers | navigate | new_tab | close_tab
+    action: str = "open"  # open | close | close_all | switch | list_browsers | navigate | new_tab | close_tab | click | type | scroll | etc.
     browser: Optional[str] = None
     url: Optional[str] = None
     target: Optional[str] = None
+    query: Optional[str] = None
+    engine: Optional[str] = "google"
+    selector: Optional[str] = None
+    text: Optional[str] = None
+    clear_first: Optional[bool] = True
+    direction: Optional[str] = "down"
+    amount: Optional[int] = 500
+    fields: Optional[Dict[str, Any]] = None
+    description: Optional[str] = None
+    key: Optional[str] = "Enter"
+    path: Optional[str] = None
+
+    model_config = {"extra": "allow"}
 
 
 class ReminderActionRequest(BaseModel):
@@ -62,3 +75,6 @@ class ReminderActionRequest(BaseModel):
     message: Optional[str] = None
     query: Optional[str] = None
     reminder_id: Optional[str] = None
+
+    model_config = {"extra": "allow"}
+

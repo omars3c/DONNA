@@ -468,6 +468,7 @@ class _BrowserSession:
     def start(self):
         if self._thread and self._thread.is_alive():
             return
+        self._ready.clear()
         self._thread = threading.Thread(
             target=self._run_loop,
             daemon=True,
@@ -479,8 +480,12 @@ class _BrowserSession:
     def _run_loop(self):
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
-        self._loop.run_until_complete(self._async_init())
-        self._ready.set()
+        try:
+            self._loop.run_until_complete(self._async_init())
+        except Exception as e:
+            print(f"[Browser] ⚠️ Error initializing playwright in background thread: {e}")
+        finally:
+            self._ready.set()
         self._loop.run_forever()
 
     async def _async_init(self):
@@ -507,6 +512,7 @@ class _BrowserSession:
                 await self._pw.stop()
             except Exception:
                 pass
+        self._pw = None
         self._context = self._page = None
 
     async def _adopt_page(self) -> Page:
@@ -531,6 +537,9 @@ class _BrowserSession:
             raise RuntimeError(
                 f"'{self.browser_name}' bu platformda ({_OS}) desteklenmiyor."
             )
+
+        if self._pw is None:
+            self._pw = await async_playwright().start()
 
         engine_name = self._spec["engine"]
         exe         = self._spec["exe"]
