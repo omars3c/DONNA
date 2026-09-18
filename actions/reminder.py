@@ -18,8 +18,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+_NO_WINDOW: int = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 _CNW: dict = (
-    {"creationflags": subprocess.CREATE_NO_WINDOW}
+    {"creationflags": _NO_WINDOW}
     if platform.system() == "Windows" else {}
 )
 
@@ -309,7 +310,7 @@ def reminder(
             is_match = False
             if target_idx is not None and idx == target_idx:
                 is_match = True
-            elif target and (target in it.get("message", "").lower() or target in it.get("date", "") or target in it.get("time", "")):
+            elif target and (target in str(it.get("message") or "").lower() or target in str(it.get("date") or "") or target in str(it.get("time") or "")):
                 is_match = True
 
             if is_match or (not target and len(items) == 1):

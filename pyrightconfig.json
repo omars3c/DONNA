@@ -2,11 +2,12 @@
   "include": [
     "."
   ],
-  "pythonPath": "C:/Users/Minerva/AppData/Local/Programs/Python/Python313/python.exe",
+  "venvPath": ".",
+  "venv": ".venv",
   "extraPaths": [
-    "C:/Users/Minerva/AppData/Local/Programs/Python/Python313/Lib/site-packages",
     "."
   ],
-  "reportMissingImports": "warning",
-  "reportMissingTypeStubs": "none"
+  "reportMissingImports": "none",
+  "reportMissingTypeStubs": "none",
+  "reportAttributeAccessIssue": "warning"
 }

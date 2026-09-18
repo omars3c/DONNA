@@ -71,9 +71,9 @@ def _build_sandbox() -> dict:
             sandbox["ctypes"] = ctypes
             sandbox["winreg"] = type("winreg", (), {
                 # Sadece okuma
-                "OpenKey":      winreg.OpenKey,
-                "QueryValueEx": winreg.QueryValueEx,
-                "HKEY_CURRENT_USER": winreg.HKEY_CURRENT_USER,
+                "OpenKey":      getattr(winreg, "OpenKey", None),
+                "QueryValueEx": getattr(winreg, "QueryValueEx", None),
+                "HKEY_CURRENT_USER": getattr(winreg, "HKEY_CURRENT_USER", None),
             })()
         except ImportError:
             pass
@@ -178,7 +178,9 @@ def set_wallpaper(image_path: str) -> str:
                     path = bmp_path
                 except ImportError:
                     pass 
-            ctypes.windll.user32.SystemParametersInfoW(20, 0, str(path), 3)
+            windll = getattr(ctypes, "windll", None)
+            if windll:
+                windll.user32.SystemParametersInfoW(20, 0, str(path), 3)
             return f"Wallpaper set: {path.name}"
 
         elif _OS == "Darwin":
@@ -265,12 +267,16 @@ def get_current_wallpaper() -> str:
     try:
         if _OS == "Windows":
             import winreg
-            key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop"
-            )
-            val, _ = winreg.QueryValueEx(key, "Wallpaper")
-            winreg.CloseKey(key)
-            return f"Current wallpaper: {val}"
+            OpenKey = getattr(winreg, "OpenKey", None)
+            HKEY_CURRENT_USER = getattr(winreg, "HKEY_CURRENT_USER", None)
+            QueryValueEx = getattr(winreg, "QueryValueEx", None)
+            CloseKey = getattr(winreg, "CloseKey", None)
+            if OpenKey and HKEY_CURRENT_USER and QueryValueEx and CloseKey:
+                key = OpenKey(HKEY_CURRENT_USER, r"Control Panel\Desktop")
+                val, _ = QueryValueEx(key, "Wallpaper")
+                CloseKey(key)
+                return f"Current wallpaper: {val}"
+            return "Winreg not available."
 
         elif _OS == "Darwin":
             script = (
@@ -437,8 +443,8 @@ def desktop_control(
         task   : natural language description for AI-powered actions
     """
     params = parameters or {}
-    action = params.get("action", "").lower().strip()
-    task   = params.get("task", "").strip()
+    action = str(params.get("action") or "").lower().strip()
+    task   = str(params.get("task") or "").strip()
 
     if player:
         player.write_log(f"[desktop] {action or task[:40]}")

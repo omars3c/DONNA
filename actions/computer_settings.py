@@ -24,8 +24,9 @@ except ImportError:
 
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 
+_NO_WINDOW: int = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 if _OS == "Windows":
-    _WIN_HIDE: dict = {"creationflags": subprocess.CREATE_NO_WINDOW}
+    _WIN_HIDE: dict = {"creationflags": _NO_WINDOW}
 else:
     _WIN_HIDE: dict = {}
 
@@ -94,8 +95,8 @@ def volume_set(value: int):
         try:
             import math
             from ctypes import cast, POINTER
-            from comtypes import CLSCTX_ALL
-            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+            from comtypes import CLSCTX_ALL  # type: ignore
+            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume  # type: ignore
             devices   = AudioUtilities.GetSpeakers()
             interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
             vol: Any  = cast(interface, POINTER(IAudioEndpointVolume))
@@ -186,10 +187,12 @@ def close_app(app_name: str = "") -> str:
         # Close active foreground window directly
         try:
             import ctypes
-            hwnd = ctypes.windll.user32.GetForegroundWindow()
-            if hwnd:
-                ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
-                return "Closed active window."
+            windll = getattr(ctypes, "windll", None)
+            if windll:
+                hwnd = windll.user32.GetForegroundWindow()
+                if hwnd:
+                    windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+                    return "Closed active window."
         except Exception:
             pass
         return "Closed active window."
@@ -217,30 +220,33 @@ def close_app(app_name: str = "") -> str:
         if _OS == "Windows":
             try:
                 import ctypes
-                EnumWindows = ctypes.windll.user32.EnumWindows
-                EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
-                GetWindowText = ctypes.windll.user32.GetWindowTextW
-                GetWindowTextLength = ctypes.windll.user32.GetWindowTextLengthW
-                IsWindowVisible = ctypes.windll.user32.IsWindowVisible
+                windll = getattr(ctypes, "windll", None)
+                winfunctype = getattr(ctypes, "WINFUNCTYPE", None)
+                if windll and winfunctype:
+                    EnumWindows = windll.user32.EnumWindows
+                    EnumWindowsProc = winfunctype(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
+                    GetWindowText = windll.user32.GetWindowTextW
+                    GetWindowTextLength = windll.user32.GetWindowTextLengthW
+                    IsWindowVisible = windll.user32.IsWindowVisible
 
-                def _enum_win(hwnd, extra):
-                    if IsWindowVisible(hwnd):
-                        length = GetWindowTextLength(hwnd)
-                        if length > 0:
-                            buff = ctypes.create_unicode_buffer(length + 1)
-                            GetWindowText(hwnd, buff, length + 1)
-                            wtitle = buff.value.lower()
-                            # Never close Donna window
-                            if any(w in wtitle for w in ('jarvis', 'donna', 'донна', 'friday')):
-                                return True
-                            if (clean in wtitle or 
-                                clean_no_space in wtitle.replace(" ", "") or 
-                                (len(clean_lat) >= 3 and clean_lat in wtitle.replace(" ", ""))):
-                                ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
-                                killed_names.append(buff.value)
-                    return True
+                    def _enum_win(hwnd, extra):
+                        if IsWindowVisible(hwnd):
+                            length = GetWindowTextLength(hwnd)
+                            if length > 0:
+                                buff = ctypes.create_unicode_buffer(length + 1)
+                                GetWindowText(hwnd, buff, length + 1)
+                                wtitle = buff.value.lower()
+                                # Never close Donna window
+                                if any(w in wtitle for w in ('jarvis', 'donna', 'донна', 'friday')):
+                                    return True
+                                if (clean in wtitle or 
+                                    clean_no_space in wtitle.replace(" ", "") or 
+                                    (len(clean_lat) >= 3 and clean_lat in wtitle.replace(" ", ""))):
+                                    windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+                                    killed_names.append(buff.value)
+                        return True
 
-                EnumWindows(EnumWindowsProc(_enum_win), 0)
+                    EnumWindows(EnumWindowsProc(_enum_win), 0)
             except Exception:
                 pass
 
@@ -525,7 +531,9 @@ def sleep_display():
     if _OS == "Windows":
         try:
             import ctypes
-            ctypes.windll.user32.SendMessageW(0xFFFF, 0x0112, 0xF170, 2)
+            windll = getattr(ctypes, "windll", None)
+            if windll:
+                windll.user32.SendMessageW(0xFFFF, 0x0112, 0xF170, 2)
         except Exception as e:
             print(f"[Settings] sleep_display failed: {e}")
     elif _OS == "Darwin":
@@ -546,12 +554,20 @@ def dark_mode():
     elif _OS == "Windows":
         try:
             import winreg
-            key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)
-            current, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-            winreg.SetValueEx(key, "AppsUseLightTheme", 0, winreg.REG_DWORD, 1 - current)
-            winreg.SetValueEx(key, "SystemUsesLightTheme", 0, winreg.REG_DWORD, 1 - current)
-            winreg.CloseKey(key)
+            OpenKey = getattr(winreg, "OpenKey", None)
+            HKEY_CURRENT_USER = getattr(winreg, "HKEY_CURRENT_USER", None)
+            KEY_ALL_ACCESS = getattr(winreg, "KEY_ALL_ACCESS", None)
+            QueryValueEx = getattr(winreg, "QueryValueEx", None)
+            SetValueEx = getattr(winreg, "SetValueEx", None)
+            REG_DWORD = getattr(winreg, "REG_DWORD", None)
+            CloseKey = getattr(winreg, "CloseKey", None)
+            if OpenKey and HKEY_CURRENT_USER and QueryValueEx and SetValueEx and CloseKey:
+                key_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+                key = OpenKey(HKEY_CURRENT_USER, key_path, 0, KEY_ALL_ACCESS)
+                current, _ = QueryValueEx(key, "AppsUseLightTheme")
+                SetValueEx(key, "AppsUseLightTheme", 0, REG_DWORD, 1 - current)
+                SetValueEx(key, "SystemUsesLightTheme", 0, REG_DWORD, 1 - current)
+                CloseKey(key)
         except Exception as e:
             print(f"[Settings] dark_mode registry failed: {e}")
     else:
@@ -724,7 +740,7 @@ Rules:
         return json.loads(text)
     except Exception as e:
         print(f"[Settings] Intent detection failed: {e}")
-        return {"action": description.lower().replace(" ", "_"), "value": None}
+        return {"action": (description or "").lower().replace(" ", "_"), "value": None}
 
 def computer_settings(
     parameters: Optional[dict] = None,
@@ -736,17 +752,17 @@ def computer_settings(
         return "pyautogui is not installed. Run: pip install pyautogui"
 
     params      = parameters or {}
-    raw_action  = params.get("action", "").strip()
-    description = params.get("description", "").strip()
+    raw_action  = str(params.get("action") or "").strip()
+    description = str(params.get("description") or "").strip()
     value       = params.get("value", None)
 
     if not raw_action and description:
         detected   = _detect_action(description)
-        raw_action = detected.get("action", "")
+        raw_action = detected.get("action") or ""
         if value is None:
             value = detected.get("value")
 
-    action = raw_action.lower().strip().replace(" ", "_").replace("-", "_")
+    action = str(raw_action or "").lower().strip().replace(" ", "_").replace("-", "_")
 
     if not action:
         return "No action could be determined."

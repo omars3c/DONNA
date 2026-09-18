@@ -52,8 +52,8 @@ def save_knowledge(
     node_id = cortex.store_node(
         title=title or content[:40],
         content=content,
-        category=category.lower().strip() or "notes",
-        tags=tags.strip(),
+        category=str(category or "notes").lower().strip() or "notes",
+        tags=str(tags or "").strip(),
         importance=max(1, min(5, int(importance or 3))),
     )
     return f"Запись сохранена в Cortex [ID #{node_id}, Категория: {category}]: '{title}'."

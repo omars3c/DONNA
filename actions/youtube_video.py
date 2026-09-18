@@ -122,7 +122,7 @@ def _ask_for_url(prompt_text: str = "YouTube video URL:") -> str | None:
         import tkinter as tk
         from tkinter import simpledialog
 
-        root = tk._default_root
+        root = getattr(tk, "_default_root", None)
         if root is None:
             root = tk.Tk()
             root.withdraw()
@@ -138,7 +138,11 @@ def _get_transcript(video_id: str) -> str | None:
     if not _TRANSCRIPT_OK:
         return None
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        if hasattr(YouTubeTranscriptApi, "list_transcripts"):
+            transcript_list = getattr(YouTubeTranscriptApi, "list_transcripts")(video_id)
+        else:
+            api_obj = YouTubeTranscriptApi() if callable(YouTubeTranscriptApi) else YouTubeTranscriptApi
+            transcript_list = getattr(api_obj, "list")(video_id)
         transcript      = None
 
         lang_priority = ["en", "tr", "de", "fr", "es", "it", "pt", "ru", "ja", "ko", "ar", "zh"]
@@ -416,7 +420,7 @@ def youtube_video(
     speak=None,
 ) -> str:
     params = parameters or {}
-    action = params.get("action", "play").lower().strip()
+    action = str(params.get("action") or "play").lower().strip()
 
     if player:
         player.write_log(f"[YouTube] Action: {action}")
@@ -431,8 +435,14 @@ def youtube_video(
 
     try:
         if action == "play":
-            return handler(params, player) or "Done."
-        return handler(params, player, speak) or "Done."
+            return _handle_play(params, player) or "Done."
+        elif action == "summarize":
+            return _handle_summarize(params, player, speak) or "Done."
+        elif action == "get_info":
+            return _handle_get_info(params, player, speak) or "Done."
+        elif action == "trending":
+            return _handle_trending(params, player, speak) or "Done."
+        return "Done."
     except Exception as e:
         print(f"[YouTube] ❌ Error in {action}: {e}")
         return f"YouTube {action} failed, sir: {e}"

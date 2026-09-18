@@ -267,8 +267,11 @@ _ALIASES: dict[str, str] = {
 }
 
 
-def _resolve_browser(name: str) -> dict | None:
-    name   = _ALIASES.get(name.lower().strip(), name.lower().strip())
+def _resolve_browser(name: str | None) -> dict | None:
+    if not name:
+        return None
+    clean = str(name).lower().strip()
+    name   = _ALIASES.get(clean, clean)
     os_map = _BROWSER_SPECS.get(_OS, {})
     spec   = os_map.get(name)
     if spec is None:
@@ -680,7 +683,8 @@ class _BrowserSession:
         return f"Could not open: {url}"
 
     async def search(self, query: str, engine: str = "google") -> str:
-        base = _SEARCH_ENGINES.get(engine.lower(), _SEARCH_ENGINES["google"])
+        eng_clean = str(engine or "google").lower().strip()
+        base = _SEARCH_ENGINES.get(eng_clean, _SEARCH_ENGINES["google"])
         return await self.go_to(base + query.replace(" ", "+"))
 
     async def click(self, selector: str = None, text: str = None) -> str:
@@ -891,13 +895,15 @@ class _SessionRegistry:
     def get(self, browser_name: str | None = None) -> _BrowserSession:
         if not browser_name:
             browser_name = self._active_browser or _detect_default_browser()
-        browser_name = _ALIASES.get(browser_name.lower().strip(), browser_name.lower().strip())
+        clean = str(browser_name or "chrome").lower().strip()
+        browser_name = _ALIASES.get(clean, clean)
         sess = self._get_or_create(browser_name)
         self._active_browser = browser_name
         return sess
 
     def switch(self, browser_name: str) -> str:
-        browser_name = _ALIASES.get(browser_name.lower().strip(), browser_name.lower().strip())
+        clean = str(browser_name or "chrome").lower().strip()
+        browser_name = _ALIASES.get(clean, clean)
         self._get_or_create(browser_name)
         self._active_browser = browser_name
         return f"Active browser → {browser_name}"
@@ -1044,8 +1050,8 @@ def browser_control(
             return result
 
         if action == "search":
-            base    = _SEARCH_ENGINES.get(params.get("engine", "google").lower(),
-                                          _SEARCH_ENGINES["google"])
+            eng = str(params.get("engine") or "google").lower().strip()
+            base    = _SEARCH_ENGINES.get(eng, _SEARCH_ENGINES["google"])
             nav_url = base + params.get("query", "").replace(" ", "+")
         else:
             nav_url = params.get("url", "").strip()

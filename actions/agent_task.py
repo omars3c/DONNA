@@ -249,7 +249,8 @@ def _open_file_on_screen(file_path: Path):
     try:
         p_str = str(file_path.resolve())
         if platform.system() == "Windows":
-            os.startfile(p_str)
+            if hasattr(os, "startfile"):
+                getattr(os, "startfile")(p_str)
         elif platform.system() == "Darwin":
             subprocess.Popen(["open", p_str])
         else:
@@ -387,9 +388,10 @@ def execute_autonomous_agent(
     safe_fn = re.sub(r'[\\/*?:"<>|]', "", raw_fn)
 
     # Determine destination folder
-    if destination.lower() in ("desktop", "рабочий стол"):
+    dest_clean = (destination or "documents").lower().strip()
+    if dest_clean in ("desktop", "рабочий стол"):
         dest_dir = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Desktop"
-    elif destination.lower() in ("downloads", "загрузки"):
+    elif dest_clean in ("downloads", "загрузки"):
         dest_dir = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Downloads"
     else:
         dest_dir = DOCUMENTS_DIR
@@ -410,7 +412,8 @@ def execute_autonomous_agent(
             elif isinstance(item, str):
                 sections.append({"heading": "Информация", "content": item, "bullets": []})
 
-    if output_format.lower() in ("docx", "word", "doc"):
+    fmt_clean = (output_format or "docx").lower().strip()
+    if fmt_clean in ("docx", "word", "doc"):
         doc_path = _create_styled_word_doc(title, subtitle, sections, out_file)
     else:
         lines = [f"# {title}\n_{subtitle}_\n\n"]

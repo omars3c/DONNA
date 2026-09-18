@@ -7,8 +7,9 @@ import string
 import subprocess
 import sys
 
+_NO_WINDOW: int = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 if platform.system() == "Windows":
-    _WIN_HIDE: dict = {"creationflags": subprocess.CREATE_NO_WINDOW}
+    _WIN_HIDE: dict = {"creationflags": _NO_WINDOW}
 else:
     _WIN_HIDE: dict = {}
 import time
@@ -442,7 +443,7 @@ def computer_control(
       user_data     — pull real data from memory
     """
     params = parameters or {}
-    action = params.get("action", "").lower().strip()
+    action = str(params.get("action") or "").lower().strip()
 
     if not action:
         return "No action specified for computer_control."
