@@ -20,12 +20,14 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
 
 if sys.platform == "win32":
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        if hasattr(sys.stdout, "reconfigure"):
+            getattr(sys.stdout, "reconfigure")(encoding="utf-8", errors="replace")
+        if hasattr(sys.stderr, "reconfigure"):
+            getattr(sys.stderr, "reconfigure")(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
@@ -40,6 +42,7 @@ GEMINI_MODELS = [
     "gemini-3.6-flash",
     "gemini-flash-latest",
     "gemini-3.5-flash",
+    "gemini-3.1-flash",
 ]
 
 
@@ -373,9 +376,12 @@ def execute_autonomous_agent(
             ]
         }
 
-    title = structured_data.get("title", "Аналитический отчёт")
-    subtitle = structured_data.get("subtitle", "Выжимка D.O.N.N.A. AI")
-    raw_fn = structured_data.get("filename", "Otchet.docx")
+    if not isinstance(structured_data, dict):
+        structured_data = {}
+
+    title: str = str(structured_data.get("title", "Аналитический отчёт"))
+    subtitle: str = str(structured_data.get("subtitle", "Выжимка D.O.N.N.A. AI"))
+    raw_fn: str = str(structured_data.get("filename", "Otchet.docx"))
     if not raw_fn.endswith(f".{output_format}"):
         raw_fn = f"{Path(raw_fn).stem}.{output_format}"
     safe_fn = re.sub(r'[\\/*?:"<>|]', "", raw_fn)
@@ -395,7 +401,15 @@ def execute_autonomous_agent(
         ui.show_content("AUTONOMOUS AGENT", f"Цель: {task}\n\n[3/4] Генерация форматированного документа: {safe_fn}...")
 
     # Step 4: Create Document (.docx / .txt)
-    sections = structured_data.get("sections", [])
+    raw_sections = structured_data.get("sections", [])
+    sections: list[dict[str, Any]] = []
+    if isinstance(raw_sections, list):
+        for item in raw_sections:
+            if isinstance(item, dict):
+                sections.append(item)
+            elif isinstance(item, str):
+                sections.append({"heading": "Информация", "content": item, "bullets": []})
+
     if output_format.lower() in ("docx", "word", "doc"):
         doc_path = _create_styled_word_doc(title, subtitle, sections, out_file)
     else:
@@ -426,7 +440,7 @@ def execute_autonomous_agent(
         f"Тема: {title}\n"
         f"Разделов: {len(sections)}\n\n"
         f"Краткая выжимка:\n"
-        + "\n".join([f"• {s.get('heading', '')}: {s.get('content', '')[:120]}..." for s in sections[:3]])
+        + "\n".join([f"• {s.get('heading', '')}: {str(s.get('content', ''))[:120]}..." for s in sections[:3]])
     )
 
     if ui:

@@ -178,14 +178,22 @@ class TelegramBridge:
                 from google.genai import types
                 client = genai.Client(api_key=self._gemini_key)
                 audio_bytes = voice_file_path.read_bytes()
-                resp = client.models.generate_content(
-                    model="gemini-3.6-flash",
-                    contents=[
-                        types.Part.from_bytes(data=audio_bytes, mime_type="audio/ogg"),
-                        "Transcribe this voice message accurately in the original language. Output ONLY the transcription text, nothing else.",
-                    ]
-                )
-                return (resp.text or "").strip()
+                resp = None
+                for m in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-flash", "gemini-flash-latest"]:
+                    try:
+                        resp = client.models.generate_content(
+                            model=m,
+                            contents=[
+                                types.Part.from_bytes(data=audio_bytes, mime_type="audio/ogg"),
+                                "Transcribe this voice message accurately in the original language. Output ONLY the transcription text, nothing else.",
+                            ]
+                        )
+                        if resp and resp.text:
+                            break
+                    except Exception:
+                        continue
+                raw_text = (resp.text or "") if resp else ""
+                return raw_text.strip()
             except Exception as e:
                 print(f"[TelegramBridge] Voice transcription error: {e}")
                 return ""

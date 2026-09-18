@@ -379,7 +379,8 @@ def _screen_find(description: str) -> tuple[int, int] | None:
             except Exception:
                 continue
 
-        text = (response.text if response else "").strip()
+        resp_text = (response.text or "") if response and response.text else ""
+        text = resp_text.strip()
         if "NOT_FOUND" in text.upper():
             return None
 

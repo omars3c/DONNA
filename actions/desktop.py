@@ -8,6 +8,7 @@ import tempfile
 import platform
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 try:
     import pyautogui
@@ -150,7 +151,7 @@ Task: {task}"""
                     break
             except Exception:
                 continue
-        code = (response.text if response else "").strip()
+        code = ((response.text or "") if response else "").strip()
         if code.startswith("```"):
             lines = code.split("\n")
             code  = "\n".join(lines[1:-1]).strip()
@@ -171,7 +172,8 @@ def set_wallpaper(image_path: str) -> str:
             if path.suffix.lower() in {".webp", ".png"}:
                 try:
                     from PIL import Image
-                    bmp_path = Path(tempfile.mktemp(suffix=".bmp"))
+                    with tempfile.NamedTemporaryFile(suffix=".bmp", delete=False) as tmp_f:
+                        bmp_path = Path(tmp_f.name)
                     Image.open(path).convert("RGB").save(bmp_path, "BMP")
                     path = bmp_path
                 except ImportError:
@@ -246,7 +248,8 @@ def set_wallpaper_from_url(url: str) -> str:
     try:
         import urllib.request
         suffix = Path(url.split("?")[0]).suffix or ".jpg"
-        tmp    = Path(tempfile.mktemp(suffix=suffix))
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_f:
+            tmp = Path(tmp_f.name)
         urllib.request.urlretrieve(url, str(tmp))
         result = set_wallpaper(str(tmp))
         try:
@@ -418,7 +421,7 @@ def get_desktop_stats() -> str:
     )
 
 def desktop_control(
-    parameters: dict = None,
+    parameters: Optional[dict] = None,
     response=None,
     player=None,
     session_memory=None,

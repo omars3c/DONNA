@@ -2,6 +2,7 @@ import os
 import uuid
 import traceback
 import asyncio
+import inspect
 import json
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
@@ -43,7 +44,7 @@ class TaskManager:
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         return self.tasks.get(task_id)
         
-    def update_status(self, task_id: str, status: str, result: str = None, error: str = None):
+    def update_status(self, task_id: str, status: str, result: Optional[str] = None, error: Optional[str] = None):
         if task_id in self.tasks:
             self.tasks[task_id]["status"] = status
             if result:
@@ -80,7 +81,7 @@ class AgentLoop:
             gemini_tools = [types.Tool(function_declarations=TOOL_DECLARATIONS)]
             
             # Non-blocking async client chat session with model fallback
-            MODELS = ["gemini-2.0-flash", "gemini-3.5-flash", "gemini-flash-latest"]
+            MODELS = ["gemini-3.1-flash", "gemini-3.5-flash", "gemini-flash-latest"]
             chat = None
             for model_name in MODELS:
                 try:
@@ -116,21 +117,29 @@ class AgentLoop:
                         else:
                             raise
                 
+                if response is None:
+                    raise RuntimeError("Failed to receive response from Gemini model")
+
+                resp_text = (response.text or "").strip()
+                fc_list = response.function_calls or []
+
                 task_manager.add_step(task_id, {
                     "step": step + 1,
-                    "text": response.text,
-                    "function_calls": [fc.name for fc in response.function_calls] if response.function_calls else []
+                    "text": resp_text,
+                    "function_calls": [fc.name for fc in fc_list if getattr(fc, "name", None)]
                 })
-                
-                if response.text and "TASK_COMPLETE:" in response.text:
-                    task_manager.update_status(task_id, "completed", result=response.text)
+
+                if resp_text and "TASK_COMPLETE:" in resp_text:
+                    task_manager.update_status(task_id, "completed", result=resp_text)
                     return
-                
-                if response.function_calls:
+
+                if fc_list:
                     function_responses = []
-                    for fc in response.function_calls:
-                        name = fc.name
-                        args = {k: v for k, v in fc.args.items()} if fc.args else {}
+                    for fc in fc_list:
+                        name = fc.name or ""
+                        if not name:
+                            continue
+                        args = {k: v for k, v in fc.args.items()} if getattr(fc, "args", None) else {}
                         print(f"[AgentLoop] Calling tool: {name}")
                         # Safety guard against destructive command injection via tool arguments
                         if name == "open_app":
@@ -143,7 +152,7 @@ class AgentLoop:
                         try:
                             func = getattr(bridge, name, None)
                             if func:
-                                if asyncio.iscoroutinefunction(func):
+                                if inspect.iscoroutinefunction(func):
                                     res = await func(**args)
                                 else:
                                     res = func(**args)
@@ -152,7 +161,7 @@ class AgentLoop:
                                 result_str = f"Error: Tool {name} not found."
                         except Exception as e:
                             result_str = f"Error executing {name}: {e}"
-                        
+
                         function_responses.append(
                             types.Part.from_function_response(
                                 name=name,

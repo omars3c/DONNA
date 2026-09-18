@@ -6,6 +6,7 @@ import time
 import subprocess
 import platform
 from pathlib import Path
+from typing import Callable, Any, Optional
 
 try:
     import pyautogui
@@ -88,7 +89,7 @@ def volume_mute():
             capture_output=True)
 
 def volume_set(value: int):
-    value = max(0, min(100, int(value)))
+    value = max(0, min(100, value))
     if _OS == "Windows":
         try:
             import math
@@ -97,9 +98,9 @@ def volume_set(value: int):
             from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
             devices   = AudioUtilities.GetSpeakers()
             interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-            vol       = cast(interface, POINTER(IAudioEndpointVolume))
+            vol: Any  = cast(interface, POINTER(IAudioEndpointVolume))
             vol_db    = -65.25 if value == 0 else max(-65.25, 20 * math.log10(value / 100))
-            vol.SetMasterVolumeLevel(vol_db, None)
+            getattr(vol, "SetMasterVolumeLevel")(vol_db, None)
             return
         except Exception as e:
             print(f"[Settings] pycaw failed, using keypress fallback: {e}")
@@ -461,11 +462,11 @@ def type_text(text: str, press_enter_after: bool = False):
     if not text:
         return
     if _PYPERCLIP:
-        pyperclip.copy(str(text))
+        pyperclip.copy(text)
         time.sleep(0.15)
         paste()
     else:
-        pyautogui.write(str(text), interval=0.03)
+        pyautogui.write(text, interval=0.03)
     if press_enter_after:
         time.sleep(0.1)
         pyautogui.press("enter")
@@ -617,7 +618,7 @@ def shutdown_computer():
     else:
         subprocess.run(["systemctl", "poweroff"], capture_output=True)
 
-ACTION_MAP: dict[str, callable] = {
+ACTION_MAP: dict[str, Callable[..., Any]] = {
     "volume_up":           volume_up,
     "volume_down":         volume_down,
     "mute":                volume_mute,
@@ -718,14 +719,15 @@ Rules:
                     break
             except Exception:
                 continue
-        text = re.sub(r"```(?:json)?", "", resp.text if resp else "").strip().rstrip("`").strip()
+        resp_text = (resp.text or "") if resp else ""
+        text = re.sub(r"```(?:json)?", "", resp_text).strip().rstrip("`").strip()
         return json.loads(text)
     except Exception as e:
         print(f"[Settings] Intent detection failed: {e}")
         return {"action": description.lower().replace(" ", "_"), "value": None}
 
 def computer_settings(
-    parameters: dict = None,
+    parameters: Optional[dict] = None,
     response=None,
     player=None,
     session_memory=None,
