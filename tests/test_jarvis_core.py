@@ -86,6 +86,12 @@ class TestJarvisCoreArchitecture(unittest.TestCase):
         diagrams_dir = BASE_DIR / "documents" / "diagrams"
         self.assertTrue(diagrams_dir.exists())
 
+    def test_07_open_app_graceful_nonexistent(self):
+        from actions.open_app import open_app
+        res = open_app(parameters={"app_name": "nonexistent_app_xyz"})
+        self.assertIsInstance(res, str)
+        self.assertTrue("Could not confirm" in res or "Не удалось найти" in res or "not installed" in res)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

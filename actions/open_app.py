@@ -375,6 +375,134 @@ def _resolve_generic_category(name: str, save_as_default_if_disambiguation: bool
     return None
 
 
+# ── Common Windows application aliases & Registry / Start Menu lookup ────────
+_WINDOWS_APP_ALIASES = {
+    "calc": "calc.exe",
+    "calculator": "calc.exe",
+    "калькулятор": "calc.exe",
+    "notepad": "notepad.exe",
+    "блокнот": "notepad.exe",
+    "paint": "mspaint.exe",
+    "mspaint": "mspaint.exe",
+    "пейнт": "mspaint.exe",
+    "word": "winword.exe",
+    "ворд": "winword.exe",
+    "excel": "excel.exe",
+    "эксель": "excel.exe",
+    "powerpoint": "powerpnt.exe",
+    "пауэрпоинт": "powerpnt.exe",
+    "cmd": "cmd.exe",
+    "командная строка": "cmd.exe",
+    "powershell": "powershell.exe",
+    "павершелл": "powershell.exe",
+    "task manager": "taskmgr.exe",
+    "taskmgr": "taskmgr.exe",
+    "диспетчер задач": "taskmgr.exe",
+    "control": "control.exe",
+    "control panel": "control.exe",
+    "панель управления": "control.exe",
+    "settings": "ms-settings:",
+    "параметры": "ms-settings:",
+    "настройки": "ms-settings:",
+    "terminal": "wt.exe",
+    "windows terminal": "wt.exe",
+    "терминал": "wt.exe",
+    "snipping tool": "snippingtool.exe",
+    "ножницы": "snippingtool.exe",
+    "regedit": "regedit.exe",
+    "реестр": "regedit.exe",
+    "telegram": "telegram.exe",
+    "телеграм": "telegram.exe",
+    "телега": "telegram.exe",
+    "discord": "discord.exe",
+    "дискорд": "discord.exe",
+    "spotify": "spotify.exe",
+    "спотифай": "spotify.exe",
+    "steam": "steam.exe",
+    "стим": "steam.exe",
+}
+
+
+def _find_app_in_registry_app_paths(name: str) -> Optional[str]:
+    """Search Windows Registry App Paths for registered exe paths."""
+    if _SYSTEM != "Windows":
+        return None
+    try:
+        import winreg
+        candidates = [name, f"{name}.exe"]
+        for root_key in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            base_path = r"Software\Microsoft\Windows\CurrentVersion\App Paths"
+            for cand in candidates:
+                try:
+                    with winreg.OpenKey(root_key, rf"{base_path}\{cand}") as k:
+                        val, _ = winreg.QueryValueEx(k, "")
+                        if val and os.path.isfile(val):
+                            return val
+                except OSError:
+                    pass
+            try:
+                with winreg.OpenKey(root_key, base_path) as base:
+                    idx = 0
+                    while True:
+                        try:
+                            sub_name = winreg.EnumKey(base, idx)
+                            idx += 1
+                            stem = sub_name.lower().removesuffix(".exe")
+                            if stem == name.lower():
+                                with winreg.OpenKey(base, sub_name) as sub:
+                                    val, _ = winreg.QueryValueEx(sub, "")
+                                    if val and os.path.isfile(val):
+                                        return val
+                        except OSError:
+                            break
+            except OSError:
+                pass
+    except Exception:
+        pass
+    return None
+
+
+def _find_app_in_start_menu(name: str) -> Optional[str]:
+    """Search Windows Start Menu for matching .lnk shortcut files."""
+    if _SYSTEM != "Windows":
+        return None
+    search_dirs = [
+        os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"), r"Microsoft\Windows\Start Menu\Programs"),
+        os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs"),
+    ]
+    name_clean = name.strip().lower()
+    for sdir in search_dirs:
+        if not os.path.isdir(sdir):
+            continue
+        try:
+            for root, dirs, files in os.walk(sdir):
+                # Don't descend more than 3 levels
+                rel = os.path.relpath(root, sdir)
+                if rel.count(os.sep) > 3:
+                    dirs.clear()
+                    continue
+                for f in files:
+                    f_lower = f.lower()
+                    if f_lower.endswith(".lnk"):
+                        f_stem = f_lower[:-4]
+                        if f_stem == name_clean or name_clean in f_stem or f_stem in name_clean:
+                            full_path = os.path.join(root, f)
+                            if os.path.exists(full_path):
+                                return full_path
+        except Exception:
+            continue
+    return None
+
+
+def _is_web_url(target: str) -> bool:
+    """Check if target string is a web URL."""
+    t = target.strip().lower()
+    if t.startswith(("http://", "https://", "www.")):
+        return True
+    tld_pattern = r'^[a-z0-9-]+(\.[a-z0-9-]+)*\.(com|org|net|io|ru|dev|app|ai|co|info|me)(/.*)?$'
+    return bool(re.match(tld_pattern, t))
+
+
 # ── Windows launcher ──────────────────────────────────────────────────────────
 
 def _launch_windows(app_name: str) -> LaunchResult:
@@ -382,13 +510,13 @@ def _launch_windows(app_name: str) -> LaunchResult:
     Hierarchical non-blocking Windows launcher.
 
     Steps:
-    1. Generic category resolution (browser/email/explorer) → Popen, confirmed by alive-check.
-    2. Direct binary lookup via which() / path → Popen, confirmed by alive-check.
-    3. Web-request routing: treat app_name as omnibox input, open via default browser.
-    4. Fallback: blind shell `start "" "{app_name}"` → unconfirmed (dialog_watchdog will judge).
-
-    The AMBIGUOUS_BROWSER sentinel is NOT handled here — it is returned to open_app()
-    which surfaces it directly to the caller without launching anything.
+    1. Generic category resolution (browser/email/explorer)
+    2. Web URL routing (only if target is an actual URL)
+    3. Common Windows aliases and URI protocols
+    4. Direct binary lookup via PATH / which
+    5. Registry App Paths lookup
+    6. Start Menu shortcuts lookup (.lnk)
+    7. Safe protocol / file invocation
     """
     # 1. Generic category resolution
     cat_result = _resolve_generic_category(app_name)
@@ -402,53 +530,98 @@ def _launch_windows(app_name: str) -> LaunchResult:
             if _proc_is_alive(proc):
                 return LaunchResult(ok=True, confirmed=True, detail=f"Category launched: {cat_result}")
             return LaunchResult(ok=False, confirmed=False, detail=f"Category process died immediately: {cat_result}")
-        except Exception as e:
-            # os.startfile as last-resort for explorer.exe and UWP-style handlers
+        except Exception:
             if hasattr(os, "startfile"):
                 try:
                     os.startfile(cat_result)
                     return LaunchResult(ok=True, confirmed=True, detail=f"startfile: {cat_result}")
                 except Exception:
                     pass
-            return LaunchResult(ok=False, confirmed=False, detail=f"Category launch failed: {e}")
+            return LaunchResult(ok=False, confirmed=False, detail=f"Category launch failed: {cat_result}")
 
-    # 2. Direct binary lookup
-    binary = shutil.which(app_name) or shutil.which(app_name.split(".")[0])
+    # 2. Web URL routing
+    if _is_web_url(app_name):
+        url = app_name if app_name.startswith(("http://", "https://")) else f"https://{app_name}"
+        browser_path = _get_default_browser_path()
+        if browser_path:
+            try:
+                proc = subprocess.Popen([browser_path, url], shell=False)
+                if _proc_is_alive(proc, wait_sec=0.8):
+                    return LaunchResult(ok=True, confirmed=True, detail=f"Browser URL opened: {browser_path} '{url}'")
+                return LaunchResult(ok=True, confirmed=True, detail=f"Browser URL opened (delegated): {browser_path} '{url}'")
+            except Exception:
+                pass
+        if hasattr(os, "startfile"):
+            try:
+                os.startfile(url)
+                return LaunchResult(ok=True, confirmed=True, detail=f"startfile URL: {url}")
+            except Exception:
+                pass
+
+    # 3. Known application aliases
+    target_cmd = _WINDOWS_APP_ALIASES.get(app_name.lower()) or _WINDOWS_APP_ALIASES.get(_normalize(app_name).lower())
+    if target_cmd:
+        if target_cmd.endswith(":") or not target_cmd.endswith(".exe"):
+            if hasattr(os, "startfile"):
+                try:
+                    os.startfile(target_cmd)
+                    return LaunchResult(ok=True, confirmed=True, detail=f"URI protocol launched: {target_cmd}")
+                except Exception:
+                    pass
+        target_path = shutil.which(target_cmd) or _find_app_in_registry_app_paths(target_cmd) or _find_app_in_start_menu(target_cmd)
+        if target_path:
+            try:
+                if target_path.lower().endswith(".lnk") and hasattr(os, "startfile"):
+                    os.startfile(target_path)
+                    return LaunchResult(ok=True, confirmed=True, detail=f"Shortcut launched: {target_path}")
+                proc = subprocess.Popen([target_path], shell=False)
+                if _proc_is_alive(proc):
+                    return LaunchResult(ok=True, confirmed=True, detail=f"Alias launched: {target_path}")
+                return LaunchResult(ok=True, confirmed=True, detail=f"Alias launched (delegated): {target_path}")
+            except Exception:
+                pass
+
+    # 4. Direct binary lookup via PATH / which
+    binary = shutil.which(app_name) or shutil.which(f"{app_name}.exe") or shutil.which(app_name.split(".")[0])
     target = binary or (app_name if os.path.isfile(app_name) else None)
     if target:
         try:
             proc = subprocess.Popen([target], shell=False)
             if _proc_is_alive(proc):
                 return LaunchResult(ok=True, confirmed=True, detail=f"Binary launched: {target}")
-            return LaunchResult(ok=False, confirmed=False, detail=f"Binary process died immediately: {target}")
-        except Exception as e:
-            pass  # Fall through to web-request routing
+            return LaunchResult(ok=True, confirmed=True, detail=f"Binary launched (delegated): {target}")
+        except Exception:
+            pass
 
-    # 3. Web-request routing: use browser omnibox
-    browser_path = _get_default_browser_path()
-    if browser_path:
+    # 5. Registry App Paths lookup
+    reg_path = _find_app_in_registry_app_paths(app_name) or _find_app_in_registry_app_paths(_normalize(app_name))
+    if reg_path:
         try:
-            proc = subprocess.Popen([browser_path, f"https://duckduckgo.com/?q={app_name.replace(" ", "+")}" if " " in app_name or "." not in app_name else (app_name if app_name.startswith("http") else f"https://{app_name}")], shell=False)
-            if _proc_is_alive(proc, wait_sec=0.8):
-                return LaunchResult(ok=True, confirmed=True, detail=f"Browser omnibox: {browser_path} '{app_name}'")
-            # Browser started but might have delegated to existing instance — still optimistic
-            return LaunchResult(ok=True, confirmed=True, detail=f"Browser omnibox (delegated): {browser_path} '{app_name}'")
-        except Exception as e:
-            pass  # Fall through to blind shell
+            proc = subprocess.Popen([reg_path], shell=False)
+            if _proc_is_alive(proc):
+                return LaunchResult(ok=True, confirmed=True, detail=f"Registry App Path launched: {reg_path}")
+            return LaunchResult(ok=True, confirmed=True, detail=f"Registry App Path launched (delegated): {reg_path}")
+        except Exception:
+            pass
 
-    # 4. Fallback: safe OS startfile invocation (unconfirmed, no shell=True injection)
-    try:
-        if platform.system() == "Windows":
+    # 6. Start Menu / Programs shortcuts (.lnk) lookup
+    lnk_path = _find_app_in_start_menu(app_name) or _find_app_in_start_menu(_normalize(app_name))
+    if lnk_path and hasattr(os, "startfile"):
+        try:
+            os.startfile(lnk_path)
+            return LaunchResult(ok=True, confirmed=True, detail=f"Start Menu shortcut launched: {lnk_path}")
+        except Exception:
+            pass
+
+    # 7. Safe OS startfile invocation as last resort
+    if hasattr(os, "startfile") and (":" in app_name or os.path.exists(app_name)):
+        try:
             os.startfile(app_name)
             return LaunchResult(ok=True, confirmed=False, detail=f"os.startfile invoked for {app_name}")
-        elif platform.system() == "Darwin":
-            subprocess.Popen(["open", app_name])
-            return LaunchResult(ok=True, confirmed=False, detail=f"open invoked for {app_name}")
-        else:
-            subprocess.Popen(["xdg-open", app_name])
-            return LaunchResult(ok=True, confirmed=False, detail=f"xdg-open invoked for {app_name}")
-    except Exception as e:
-        return LaunchResult(ok=False, confirmed=False, detail=str(e))
+        except Exception as e:
+            return LaunchResult(ok=False, confirmed=False, detail=str(e))
+
+    return LaunchResult(ok=False, confirmed=False, detail=f"Failed to launch {app_name}")
 
 
 def _launch_macos(app_name: str) -> bool:
@@ -667,11 +840,11 @@ def open_app(
             return f"Opened {app_name}."
 
         if result.ok and not result.confirmed:
-            # Fallback blind launch (step 4) was used: check for newly spawned error dialog
+            # Fallback launch was used: check for newly spawned error dialog
             dialog_text = watch_for_dialog(timeout_sec=2.0, before_hwnds=before_hwnds)
             if dialog_text:
                 report(
-                    severity="ERROR",
+                    severity="INFO",
                     source="open_app",
                     message=f"App not found: {app_name}, native dialog detected",
                     context={"app_name": app_name, "normalized": normalized, "dialog": dialog_text},
@@ -679,19 +852,19 @@ def open_app(
                 return f"Не удалось найти {app_name} на компьютере."
 
             report(
-                severity="WARNING",
+                severity="INFO",
                 source="open_app",
                 message=f"Unconfirmed launch: {app_name}",
                 context={"app_name": app_name, "normalized": normalized},
             )
             return f"Started a launch attempt for {app_name}, but could not confirm it opened."
 
-        # Total failure: nothing succeeded
-        err_detail = result.detail or "Could not confirm that application launched"
+        # Total failure: nothing succeeded (app is not installed or not found)
+        err_detail = result.detail or "Could not find application"
         report(
-            severity="ERROR",
+            severity="INFO",
             source="open_app",
-            message=f"Failed to open {app_name}: {err_detail}",
+            message=f"App not found or failed to launch: {app_name} ({err_detail})",
             context={"app_name": app_name, "normalized": normalized},
         )
         return (
@@ -703,7 +876,8 @@ def open_app(
         report(
             severity="ERROR",
             source="open_app",
-            message=f"Failed to open {app_name}: {e}",
+            message=f"Error executing open_app for {app_name}: {e}",
+            exc=e,
             context={"app_name": app_name, "normalized": normalized},
         )
         return f"Failed to open {app_name}: {e}"

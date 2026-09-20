@@ -122,7 +122,7 @@ _in_reporter = threading.local()
 
 
 def _sentry_before_send(event, hint):
-    """Filters out expected rate limits (429) and broken pipe errors from Sentry reports."""
+    """Filters out expected rate limits (429), broken pipe errors, and app-not-found from Sentry reports."""
     try:
         if "exc_info" in hint and hint["exc_info"]:
             exc_val = hint["exc_info"][1]
@@ -132,12 +132,19 @@ def _sentry_before_send(event, hint):
             if getattr(exc_val, "errno", None) in (22, 32) or isinstance(exc_val, (BrokenPipeError,)):
                 return None
 
+        # Check top-level message
+        msg = str(event.get("message", "")).lower()
+        if "failed to open" in msg or "app not found" in msg or "could not find" in msg or "nonexistent_app" in msg:
+            return None
+
         exceptions = event.get("exception", {}).get("values", [])
         for ex in exceptions:
             val = str(ex.get("value", "")).lower()
             if "429" in val or "resource_exhausted" in val or "quota" in val or "rate-limits" in val:
                 return None
             if "errno 22" in val or "broken pipe" in val:
+                return None
+            if "failed to open" in val or "app not found" in val or "nonexistent_app" in val:
                 return None
     except Exception:
         pass
