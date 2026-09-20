@@ -53,7 +53,7 @@ def _get_api_key() -> str:
 # ── Embedding Engine (Gemini 3072D + Fast Local Cosine Fallback) ──────────────
 
 def _get_embedding(text: str) -> np.ndarray:
-    """Compute 3072D embedding via Gemini API or fallback to local normalized TF-IDF vector."""
+    """Compute 3072D embedding via Gemini API (models/gemini-embedding-2) or fallback to deterministic local normalized vector."""
     clean_text = (text or "").strip()
     if not clean_text:
         return np.zeros(3072, dtype=np.float32)
@@ -66,33 +66,37 @@ def _get_embedding(text: str) -> np.ndarray:
         try:
             from google import genai
             client = genai.Client(api_key=api_key)
-            resp = client.models.embed_content(
-                model="models/gemini-embedding-001",
-                contents=clean_text[:4000],
-            )
-            if hasattr(resp, "embeddings") and resp.embeddings and hasattr(resp.embeddings[0], "values"):
-                vec = np.array(resp.embeddings[0].values, dtype=np.float32)
-                norm = np.linalg.norm(vec)
-                if norm > 0:
-                    vec = vec / norm
-                if len(_EMBED_CACHE) > 500:
-                    _EMBED_CACHE.clear()
-                _EMBED_CACHE[clean_text] = vec
-                return vec
-        except Exception as e:
-            # Fallback smoothly to local vector representation
+            for emb_model in ["models/gemini-embedding-2", "models/gemini-embedding-001"]:
+                try:
+                    resp = client.models.embed_content(
+                        model=emb_model,
+                        contents=clean_text[:4000],
+                    )
+                    if hasattr(resp, "embeddings") and resp.embeddings and hasattr(resp.embeddings[0], "values"):
+                        vec = np.array(resp.embeddings[0].values, dtype=np.float32)
+                        norm = np.linalg.norm(vec)
+                        if norm > 0:
+                            vec = vec / norm
+                        if len(_EMBED_CACHE) > 1000:
+                            _EMBED_CACHE.clear()
+                        _EMBED_CACHE[clean_text] = vec
+                        return vec
+                except Exception:
+                    continue
+        except Exception:
             pass
 
-    # Local TF-IDF & Character N-gram embedding fallback (deterministic 3072D)
+    # Deterministic local TF-IDF & Character N-gram embedding fallback (SHA256 3072D)
+    import hashlib
     vec = np.zeros(3072, dtype=np.float32)
     words = re.findall(r"\w+", clean_text.lower())
     for w in words:
-        h = hash(w) % 3072
-        vec[h] += 1.0
+        idx = int.from_bytes(hashlib.sha256(w.encode("utf-8")).digest()[:4], "big") % 3072
+        vec[idx] += 1.0
     for i in range(len(clean_text) - 2):
         trigram = clean_text[i : i + 3].lower()
-        h = (hash(trigram) + 1024) % 3072
-        vec[h] += 0.5
+        idx = (int.from_bytes(hashlib.sha256(trigram.encode("utf-8")).digest()[:4], "big") + 1024) % 3072
+        vec[idx] += 0.5
     norm = np.linalg.norm(vec)
     if norm > 0:
         vec = vec / norm

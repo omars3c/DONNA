@@ -81,7 +81,7 @@ class AgentLoop:
             gemini_tools = [types.Tool(function_declarations=TOOL_DECLARATIONS)]
             
             # Non-blocking async client chat session with model fallback
-            MODELS = ["gemini-3.1-flash", "gemini-3.5-flash", "gemini-flash-latest"]
+            MODELS = ["gemini-2.0-flash", "gemini-3.5-flash", "gemini-flash-latest"]
             chat = None
             for model_name in MODELS:
                 try:

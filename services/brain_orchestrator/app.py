@@ -315,7 +315,40 @@ class BrainOrchestrator:
             f"Always refer to yourself as {asst_name}.\n"
             f"Always address the user as '{user_name}'.\n\n"
         )
-        sys_prompt = time_ctx + identity_ctx + _load_prompt()
+        # Injections: Ambient workspace context (active window, process, clipboard)
+        ambient_ctx = ""
+        try:
+            from core.ambient_context import format_ambient_for_prompt
+            ambient_ctx = format_ambient_for_prompt()
+        except Exception as e:
+            print(f"[Brain] Ambient context warning: {e}")
+
+        # Injections: Cortex Knowledge & active tasks summary
+        cortex_ctx = ""
+        try:
+            from memory.cortex_engine import cortex
+            cortex_ctx = cortex.get_cortex_summary_for_prompt()
+        except Exception as e:
+            print(f"[Brain] Cortex context warning: {e}")
+
+        # Injections: OpenClaw skills capabilities
+        openclaw_ctx = ""
+        try:
+            from core.openclaw_engine import openclaw_engine
+            openclaw_ctx = openclaw_engine.get_skills_summary_for_prompt()
+        except Exception as e:
+            print(f"[Brain] OpenClaw context warning: {e}")
+
+        prompt_parts = [time_ctx, identity_ctx]
+        if ambient_ctx:
+            prompt_parts.append(ambient_ctx)
+        if cortex_ctx:
+            prompt_parts.append(cortex_ctx)
+        if openclaw_ctx:
+            prompt_parts.append(openclaw_ctx)
+        prompt_parts.append(_load_prompt())
+
+        sys_prompt = "\n".join(prompt_parts)
 
         client = genai.Client(api_key=api_key, http_options={"api_version": "v1beta"})
 
