@@ -16,6 +16,8 @@ Smoke-test: проверяет микросервисы DONNA.
    Запуск:
        python scripts/smoke_test.py --all
 """
+from __future__ import annotations
+
 import os
 import sys
 import subprocess
@@ -32,6 +34,15 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
         pass
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def get_best_python() -> str:
+    """Find virtualenv python if available, otherwise fall back to sys.executable."""
+    venv_py = ROOT / ".venv" / ("Scripts" if sys.platform == "win32" else "bin") / ("python.exe" if sys.platform == "win32" else "python")
+    if venv_py.exists():
+        return str(venv_py)
+    return sys.executable
+
 
 SERVICES = [
     "services.cortex_memory_service.app",
@@ -61,7 +72,9 @@ HEALTH_TARGETS = [
 ]
 
 
-def check_import(module_path: str, python_exe: str = sys.executable) -> tuple[bool, str]:
+def check_import(module_path: str, python_exe: str | None = None) -> tuple[bool, str]:
+    if not python_exe:
+        python_exe = get_best_python()
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
     result = subprocess.run(
@@ -78,7 +91,9 @@ def check_import(module_path: str, python_exe: str = sys.executable) -> tuple[bo
 
 
 def run_import_tests() -> bool:
-    print(f"Проверка импортов из: {ROOT}\n", flush=True)
+    py_target = get_best_python()
+    print(f"Проверка импортов из: {ROOT}")
+    print(f"Интерпретатор: {py_target}\n", flush=True)
     failures = []
     for svc in SERVICES:
         print(f"Тестирование {svc}...", end="\r", flush=True)

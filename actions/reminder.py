@@ -6,6 +6,8 @@ Supports:
   - Cancelling / Deleting specific reminders by ID or text
   - Cancelling all reminders
 """
+from __future__ import annotations
+
 import json
 import os
 import platform

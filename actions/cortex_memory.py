@@ -2,6 +2,8 @@
 Cortex Knowledge & Semantic Memory Actions for D.O.N.N.A.
 Exposes tools for semantic memory search, task management, and knowledge journaling.
 """
+from __future__ import annotations
+
 from typing import Optional, Dict, Any, List
 from memory.cortex_engine import cortex
 
