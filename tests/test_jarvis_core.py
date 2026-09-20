@@ -92,6 +92,24 @@ class TestJarvisCoreArchitecture(unittest.TestCase):
         self.assertIsInstance(res, str)
         self.assertTrue("Could not confirm" in res or "Не удалось найти" in res or "not installed" in res)
 
+    def test_08_internal_token_exports(self):
+        from shared.config import (
+            INTERNAL_TOKEN,
+            INTERNAL_API_TOKEN,
+            INTERNAL_TOKEN_HEADER,
+            DONNA_INTERNAL_TOKEN,
+            get_internal_token,
+            get_internal_headers,
+        )
+        from shared import INTERNAL_TOKEN as ROOT_INTERNAL_TOKEN
+
+        self.assertEqual(INTERNAL_TOKEN, INTERNAL_API_TOKEN)
+        self.assertEqual(ROOT_INTERNAL_TOKEN, INTERNAL_TOKEN)
+        self.assertEqual(DONNA_INTERNAL_TOKEN, INTERNAL_TOKEN)
+        self.assertEqual(INTERNAL_TOKEN_HEADER, "X-Donna-Internal-Token")
+        self.assertIsInstance(get_internal_token(), str)
+        self.assertIsInstance(get_internal_headers(), dict)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

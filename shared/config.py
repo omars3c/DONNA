@@ -62,6 +62,12 @@ ALLOWED_ORIGINS: List[str] = [
 INTERNAL_TOKEN_HEADER = "X-Donna-Internal-Token"
 INTERNAL_API_TOKEN = os.getenv("DONNA_INTERNAL_TOKEN", "")
 INTERNAL_TOKEN = INTERNAL_API_TOKEN
+DONNA_INTERNAL_TOKEN = INTERNAL_API_TOKEN
+
+
+def get_internal_token() -> str:
+    """Returns the current internal authentication token from environment or fallback."""
+    return os.getenv("DONNA_INTERNAL_TOKEN", INTERNAL_API_TOKEN)
 
 
 async def verify_internal_token(request: Request):
@@ -75,7 +81,7 @@ async def verify_internal_token(request: Request):
     if path in ("/health", "/docs", "/openapi.json", "/", "/redoc", "/gateway/health"):
         return True
 
-    active_token = os.getenv("DONNA_INTERNAL_TOKEN", INTERNAL_API_TOKEN)
+    active_token = get_internal_token()
     if not active_token:
         return True
 
@@ -91,7 +97,53 @@ async def verify_internal_token(request: Request):
 def get_internal_headers(extra_headers: Optional[Dict[str, str]] = None) -> dict:
     """Returns headers dict populated with X-Donna-Internal-Token if configured."""
     headers = dict(extra_headers) if extra_headers else {}
-    token = os.getenv("DONNA_INTERNAL_TOKEN", INTERNAL_API_TOKEN)
+    token = get_internal_token()
     if token:
         headers[INTERNAL_TOKEN_HEADER] = token
     return headers
+
+
+def __getattr__(name: str):
+    if name in ("INTERNAL_TOKEN", "INTERNAL_API_TOKEN", "DONNA_INTERNAL_TOKEN"):
+        return get_internal_token()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+
+__all__ = [
+    "BASE_DIR",
+    "CONFIG_DIR",
+    "API_KEYS_PATH",
+    "BRAIN_HOST",
+    "BRAIN_PORT",
+    "BRAIN_SERVICE_URL",
+    "CORTEX_HOST",
+    "CORTEX_PORT",
+    "CORTEX_SERVICE_URL",
+    "RESEARCH_HOST",
+    "RESEARCH_PORT",
+    "RESEARCH_SERVICE_URL",
+    "HOST_AGENT_HOST",
+    "HOST_AGENT_PORT",
+    "HOST_AGENT_SERVICE_URL",
+    "AUDIO_HOST",
+    "AUDIO_PORT",
+    "AUDIO_SERVICE_URL",
+    "CHANNEL_GATEWAY_HOST",
+    "CHANNEL_GATEWAY_PORT",
+    "CHANNEL_GATEWAY_SERVICE_URL",
+    "SENTINEL_HOST",
+    "SENTINEL_PORT",
+    "SENTINEL_SERVICE_URL",
+    "SENTINEL_ENABLED",
+    "AUTONOMOUS_HOST",
+    "AUTONOMOUS_PORT",
+    "AUTONOMOUS_SERVICE_URL",
+    "ALLOWED_ORIGINS",
+    "INTERNAL_TOKEN_HEADER",
+    "INTERNAL_API_TOKEN",
+    "INTERNAL_TOKEN",
+    "DONNA_INTERNAL_TOKEN",
+    "get_internal_token",
+    "verify_internal_token",
+    "get_internal_headers",
+]
