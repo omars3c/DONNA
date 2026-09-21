@@ -134,6 +134,7 @@ class BrainOrchestrator:
         # Set to True after open_app returns AMBIGUOUS_BROWSER; cleared after the
         # next open_app call so the chosen browser is saved as default.
         self._pending_browser_disambiguation = False
+        self._should_sleep_after_turn = False
 
     def wake_up(self, duration: float = 15.0, reason: str = ""):
         self._active_until = time.monotonic() + duration
@@ -227,7 +228,12 @@ class BrainOrchestrator:
                 c_kwargs = {k: v for k, v in args.items() if k != "action"}
                 result = await bridge.computer_control(action_val, **c_kwargs)
             elif name == "computer_settings":
-                result = await bridge.computer_settings(args.get("action", ""), value=args.get("value"), app_name=args.get("app_name"))
+                action_name = str(args.get("action", "")).lower()
+                if action_name in ("sleep", "standby", "go_to_sleep", "sleep_mode"):
+                    self._should_sleep_after_turn = True
+                    result = "Перехожу в режим ожидания. Скажите 'Донна', когда понадоблюсь."
+                else:
+                    result = await bridge.computer_settings(args.get("action", ""), value=args.get("value"), app_name=args.get("app_name"))
             elif name == 'screen_process':
                 angle = args.get("angle", "screen")
                 img_bytes, mime_type = await bridge.capture_screenshot()
@@ -465,8 +471,20 @@ class BrainOrchestrator:
                                             await self.broadcast_hud({"type": "log", "speaker": "jarvis", "text": full_out})
                                         out_buf = []
 
-                                        # If Gemini completed without generating any audio, revert to LISTENING
-                                        if self.state != "SPEAKING":
+                                        # Check if user requested sleep/standby in speech
+                                        sleep_triggers = (
+                                            "спать", "усни", "засни", "режим сна", "отбой", "в режим сна",
+                                            "режим ожидания", "в режим ожидания", "стендбай", "standby",
+                                            "поспи", "отдохни", "молчи", "замолчи"
+                                        )
+                                        if any(trigger in full_in.lower() for trigger in sleep_triggers):
+                                            self._should_sleep_after_turn = True
+
+                                        if self._should_sleep_after_turn and self.state != "SPEAKING":
+                                            self._should_sleep_after_turn = False
+                                            self.go_to_sleep()
+                                        elif self.state != "SPEAKING":
+                                            # If Gemini completed without generating any audio, revert to LISTENING
                                             self.wake_up(duration=15.0, reason="Turn Complete No Audio")
 
                                 # Tool Calls
@@ -708,7 +726,10 @@ async def ws_audio(websocket: WebSocket):
                 brain.wake_up(duration=15.0, reason=data.get("keyword", "wake word"))
             elif msg_type == "speech_done":
                 brain._speech_done_event.set()
-                if brain.state == "SPEAKING":
+                if brain._should_sleep_after_turn:
+                    brain._should_sleep_after_turn = False
+                    brain.go_to_sleep()
+                elif brain.state == "SPEAKING":
                     brain.wake_up(duration=15.0, reason="Speech Finished")
             elif msg_type == "interrupt":
                 brain.wake_up(duration=15.0, reason="Voice Interrupt")

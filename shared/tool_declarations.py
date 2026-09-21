@@ -141,11 +141,11 @@ TOOL_DECLARATIONS = [
     },
     {
         "name": "computer_settings",
-        "description": "Controls volume, brightness, closes applications, and toggles system settings.",
+        "description": "Controls volume, brightness, closes applications, puts assistant into standby sleep mode, and toggles system settings.",
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "action": {"type": "STRING", "description": "volume_set | volume_mute | close_app | sleep_display"},
+                "action": {"type": "STRING", "description": "volume_set | volume_mute | close_app | sleep_display | sleep | standby"},
                 "value": {"type": "STRING", "description": "Value e.g. volume level 50"},
                 "app_name": {"type": "STRING", "description": "Application name to close"},
             },

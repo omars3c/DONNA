@@ -91,8 +91,9 @@ class OfflineWakeWordEngine:
     def _match_wake_keyword(self, clean_text: str) -> bool:
         if not clean_text:
             return False
+        # Exact valid assistant triggers (reject fuzzy substrings like 'дона' or 'доно' that cause false positives)
         exact_triggers = {
-            "донна", "донны", "донне", "донну", "донной", "доно", "donna", "дона", "доня",
+            "донна", "донны", "донне", "донну", "донной", "donna",
             "пятница", "пятницы", "пятнице", "пятницу", "пятницей", "friday", "фрайдей",
             "джарвис", "джарвиса", "джарвису", "jarvis",
         }
@@ -102,7 +103,8 @@ class OfflineWakeWordEngine:
             if w_clean in exact_triggers:
                 return True
             for t in exact_triggers:
-                if len(w_clean) >= 4 and (w_clean.startswith(t) or t.startswith(w_clean)):
+                # Minimum 5 characters match to prevent short phonetic collisions (e.g. 'дона')
+                if len(w_clean) >= 5 and (w_clean == t or w_clean.startswith(t)):
                     return True
         return False
 
