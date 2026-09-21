@@ -39,6 +39,7 @@ dependencies = [
     "win10toast; sys_platform == 'win32'",
     "pywinauto; sys_platform == 'win32'",
     "pywin32; sys_platform == 'win32'",
+    "ddgs>=9.16.0",
 ]
 
 [dependency-groups]
@@ -47,5 +48,13 @@ dev = [
     "httpx",
 ]
 
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning:fastapi.*:",
+    "ignore::DeprecationWarning:shared.error_reporter.*:",
+    "ignore::urllib3.exceptions.DependencyWarning:",
+]
+
 [tool.uv]
 managed = true
+

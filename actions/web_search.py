@@ -138,144 +138,162 @@ def _wikipedia_search(query: str) -> Optional[dict]:
     return None
 
 
-# ── 3. DuckDuckGo Search (Library + HTTP HTML/Lite Scraping) ─────────────────
+# ── 3. News RSS Fallbacks (Yandex/Dzen, RBC, Lenta, Google News) ─────────────
+
+def _rss_news_search(query: str, max_results: int = 8) -> list[dict]:
+    """Fetches high-quality news headlines from Yandex/Dzen, RBC, Lenta, and Google News RSS."""
+    import xml.etree.ElementTree as ET
+    results = []
+
+    # 1. Yandex / Dzen Topics / Feed API
+    try:
+        q_lower = query.lower()
+        rubric = "computers" if any(k in q_lower for k in ["ии", "ai", "нейросет", "интеллект", "технолог", "it", "софт"]) else "world"
+        dzen_url = f"https://dzen.ru/api/v3/launcher/more?rubric={rubric}"
+        dr = requests.get(dzen_url, headers=HEADERS, timeout=4)
+        if dr.status_code == 200:
+            ddata = dr.json()
+            for it in ddata.get("items", []):
+                t = it.get("title", "").strip()
+                link = it.get("link", "").strip()
+                summary = it.get("snippet", "") or it.get("text", "") or ""
+                src = it.get("source_name", "") or "Дзен Новости"
+                if t and link and not any(r["url"] == link for r in results):
+                    results.append({
+                        "title": t,
+                        "snippet": summary,
+                        "url": link,
+                        "source": src,
+                    })
+                if len(results) >= max_results:
+                    return results
+    except Exception as e:
+        _safe_log(f"[WebSearch] Dzen news fallback failed: {e}")
+
+    # 2. Google News RSS Search
+    try:
+        safe_q = urllib.parse.quote(query)
+        gn_url = f"https://news.google.com/rss/search?q={safe_q}&hl=ru&gl=RU&ceid=RU:ru"
+        gr = requests.get(gn_url, headers=HEADERS, timeout=4)
+        if gr.status_code == 200:
+            root = ET.fromstring(gr.content)
+            for item in root.findall(".//item"):
+                t = item.find("title")
+                l = item.find("link")
+                s = item.find("source")
+                title_text = t.text.strip() if t is not None and t.text else ""
+                link_text = l.text.strip() if l is not None and l.text else ""
+                src_text = s.text.strip() if s is not None and s.text else "Google News"
+                if title_text and link_text:
+                    results.append({
+                        "title": title_text,
+                        "snippet": "",
+                        "url": link_text,
+                        "source": src_text,
+                    })
+                if len(results) >= max_results:
+                    return results
+    except Exception as e:
+        _safe_log(f"[WebSearch] Google News RSS fallback failed: {e}")
+
+    # 3. RBC & Lenta RSS general fallback if still empty
+    if not results:
+        feed_urls = [
+            ("https://rssexport.rbc.ru/rbcnews/news/30/full.rss", "РБК"),
+            ("https://lenta.ru/rss/news", "Лента.ру"),
+        ]
+        for f_url, f_name in feed_urls:
+            try:
+                fr = requests.get(f_url, headers=HEADERS, timeout=4)
+                if fr.status_code == 200:
+                    froot = ET.fromstring(fr.content)
+                    for item in froot.findall(".//item"):
+                        t = item.find("title")
+                        l = item.find("link")
+                        desc = item.find("description")
+                        t_text = t.text.strip() if t is not None and t.text else ""
+                        l_text = l.text.strip() if l is not None and l.text else ""
+                        desc_text = desc.text.strip() if desc is not None and desc.text else ""
+                        if t_text and l_text:
+                            results.append({
+                                "title": t_text,
+                                "snippet": desc_text,
+                                "url": l_text,
+                                "source": f_name,
+                            })
+                        if len(results) >= max_results:
+                            return results
+            except Exception:
+                continue
+
+    return results
+
+
+# ── 4. DuckDuckGo Search (via modern ddgs library with Fallback) ──────────────
 
 def _ddg_library_search(query: str, max_results: int = 6) -> list[dict]:
+    """Modern DDGS text search."""
     try:
-        try:
-            from ddgs import DDGS
-        except ImportError:
-            from duckduckgo_search import DDGS
-
-        results = []
+        import ddgs
         is_cyrillic = bool(re.search(r"[а-яА-ЯёЁ]", query))
         region = "ru-ru" if is_cyrillic else "wt-wt"
 
-        for backend in ["auto", "html", "lite"]:
-            try:
-                with DDGS() as ddgs:
-                    for r in ddgs.text(query, region=region, backend=backend, max_results=max_results):
-                        results.append({
-                            "title": r.get("title", ""),
-                            "snippet": r.get("body", ""),
-                            "url": r.get("href", ""),
-                        })
-                if results:
-                    return results
-            except Exception:
-                continue
-    except Exception:
-        pass
+        with ddgs.DDGS() as client:
+            raw_res = list(client.text(query, region=region, max_results=max_results))
+            results = []
+            for r in raw_res:
+                results.append({
+                    "title": r.get("title", ""),
+                    "snippet": r.get("body", ""),
+                    "url": r.get("href", ""),
+                })
+            if results:
+                return results
+    except Exception as e:
+        _safe_log(f"[WebSearch] ddgs text search failed: {e}")
+
     return []
 
 
-def _ddg_lite_search(query: str, max_results: int = 6) -> list[dict]:
-    """Direct HTTP POST to DuckDuckGo Lite without external library dependencies."""
-    results = []
-    try:
-        url = "https://lite.duckduckgo.com/lite/"
-        r = requests.post(url, data={"q": query}, headers=HEADERS, timeout=4)
-        if r.status_code == 200:
-            soup = BeautifulSoup(r.text, "html.parser")
-            for tr in soup.select("table tr"):
-                link_el = tr.select_one("a.result-link")
-                if link_el:
-                    title = link_el.get_text(strip=True)
-                    raw_href = link_el.get("href")
-                    url_link = str(raw_href) if raw_href is not None else ""
-                    if "duckduckgo.com/l/?uddg=" in url_link:
-                        parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url_link).query)
-                        if "uddg" in parsed:
-                            url_link = parsed["uddg"][0]
-                    snippet = ""
-                    nxt = tr.find_next_sibling("tr")
-                    if nxt:
-                        snippet = nxt.get_text(strip=True)
-                    results.append({
-                        "title": title,
-                        "snippet": snippet,
-                        "url": url_link,
-                    })
-                    if len(results) >= max_results:
-                        break
-    except Exception as e:
-        _safe_log(f"[WebSearch] DDG Lite HTTP failed: {e}")
-    return results
-
-
-def _ddg_html_search(query: str, max_results: int = 6) -> list[dict]:
-    """Direct HTTP POST to DuckDuckGo HTML."""
-    results = []
-    try:
-        url = "https://html.duckduckgo.com/html/"
-        r = requests.post(url, data={"q": query, "b": ""}, headers=HEADERS, timeout=4)
-        if r.status_code == 200:
-            soup = BeautifulSoup(r.text, "html.parser")
-            for el in soup.select(".result"):
-                title_el = el.select_one(".result__title a")
-                snippet_el = el.select_one(".result__snippet")
-                if title_el and snippet_el:
-                    title = title_el.get_text(strip=True)
-                    raw_href = title_el.get("href")
-                    url_link = str(raw_href) if raw_href is not None else ""
-                    if "duckduckgo.com/l/?uddg=" in url_link:
-                        parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url_link).query)
-                        if "uddg" in parsed:
-                            url_link = parsed["uddg"][0]
-                    snippet = snippet_el.get_text(strip=True)
-                    results.append({
-                        "title": title,
-                        "snippet": snippet,
-                        "url": url_link,
-                    })
-                    if len(results) >= max_results:
-                        break
-    except Exception as e:
-        _safe_log(f"[WebSearch] DDG HTML HTTP failed: {e}")
-    return results
-
-
 def _ddg_search(query: str, max_results: int = 6) -> list[dict]:
-    """Robust multi-layer search: Lite HTTP -> HTML HTTP -> Library."""
-    results = _ddg_lite_search(query, max_results=max_results)
+    """Primary web search with ddgs and RSS fallback."""
+    results = _ddg_library_search(query, max_results=max_results)
     if not results:
-        results = _ddg_html_search(query, max_results=max_results)
-    if not results:
-        results = _ddg_library_search(query, max_results=max_results)
+        # Fallback to Google / RSS news search if standard DDG is blocked
+        results = _rss_news_search(query, max_results=max_results)
     return results
 
 
 def _ddg_news(query: str, max_results: int = 8) -> list[dict]:
-    """DDG news search with fast HTTP fallback."""
+    """Dedicated news search: ddgs.news() -> RSS fallback (Yandex/Dzen, Google, RBC, Lenta)."""
     results = []
-    # Fast news query via Lite HTTP
     is_cyrillic = bool(re.search(r"[а-яА-ЯёЁ]", query))
-    news_q = f"{query} новости сегодня свежие" if is_cyrillic else f"{query} news today latest"
-    results = _ddg_lite_search(news_q, max_results=max_results)
+    region = "ru-ru" if is_cyrillic else "wt-wt"
 
-    if not results:
-        try:
-            try:
-                from ddgs import DDGS
-            except ImportError:
-                from duckduckgo_search import DDGS
+    # 1. Try modern ddgs news
+    try:
+        import ddgs
+        with ddgs.DDGS() as client:
+            raw_news = list(client.news(query, region=region, max_results=max_results))
+            for r in raw_news:
+                results.append({
+                    "title": r.get("title", ""),
+                    "snippet": r.get("body", ""),
+                    "url": r.get("url", ""),
+                    "source": r.get("source", ""),
+                })
+        if results:
+            return results
+    except Exception as e:
+        _safe_log(f"[WebSearch] ddgs.news() failed: {e}")
 
-            region = "ru-ru" if is_cyrillic else "wt-wt"
-            with DDGS() as ddgs:
-                for r in ddgs.news(query, region=region, max_results=max_results):
-                    results.append({
-                        "title": r.get("title", ""),
-                        "snippet": r.get("body", ""),
-                        "url": r.get("url", ""),
-                        "source": r.get("source", ""),
-                    })
-        except Exception:
-            pass
+    # 2. Resilient RSS News Fallback (Yandex/Dzen + Google News + RBC + Lenta)
+    rss_res = _rss_news_search(query, max_results=max_results)
+    if rss_res:
+        return rss_res
 
-    if not results:
-        results = _ddg_search(news_q, max_results=max_results)
-
-    return results
+    # 3. Last resort: ddgs text query
+    return _ddg_library_search(f"{query} новости", max_results=max_results)
 
 
 # ── 4. Web Page Content Extractor (for Deep Research) ─────────────────────────
