@@ -2221,9 +2221,21 @@ def _connect_microservices(win: MainWindow):
     import json
     import httpx
     import websockets
+    import os
+
+    try:
+        from shared.config import BRAIN_HOST, BRAIN_PORT, BRAIN_SERVICE_URL
+    except ImportError:
+        BRAIN_HOST = os.getenv("DONNA_BRAIN_HOST", "127.0.0.1")
+        BRAIN_PORT = int(os.getenv("DONNA_BRAIN_PORT", "8001"))
+        BRAIN_SERVICE_URL = f"http://{BRAIN_HOST}:{BRAIN_PORT}"
+
+    hud_ws_uri = f"ws://{BRAIN_HOST}:{BRAIN_PORT}/ws/hud"
+    token = os.getenv("DONNA_INTERNAL_TOKEN", "")
+    auth_headers = {"X-Donna-Internal-Token": token} if token else {}
 
     async def _hud_listener():
-        uri = "ws://127.0.0.1:8001/ws/hud"
+        uri = hud_ws_uri
         while True:
             try:
                 async with websockets.connect(uri) as ws:
@@ -2253,7 +2265,7 @@ def _connect_microservices(win: MainWindow):
     def _send_command_sync(text: str):
         try:
             with httpx.Client(timeout=10.0) as client:
-                resp = client.post("http://127.0.0.1:8001/v1/command", json={"text": text})
+                resp = client.post(f"{BRAIN_SERVICE_URL}/v1/command", json={"text": text}, headers=auth_headers)
                 if resp.status_code != 200:
                     win._log_sig.emit(f"SYS: Command error ({resp.status_code}): {resp.text}")
         except Exception as e:
@@ -2262,7 +2274,7 @@ def _connect_microservices(win: MainWindow):
     def _send_interrupt_sync():
         try:
             with httpx.Client(timeout=3.0) as client:
-                client.post("http://127.0.0.1:8001/v1/interrupt")
+                client.post(f"{BRAIN_SERVICE_URL}/v1/interrupt", headers=auth_headers)
         except Exception:
             pass
 
