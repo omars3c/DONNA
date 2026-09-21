@@ -141,3 +141,6 @@ $RECYCLE.BIN/
 .idea/
 *.swp
 *.swo
+
+# Local Architecture Diagrams (Explicitly kept local)
+*.drawio
