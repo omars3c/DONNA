@@ -134,4 +134,20 @@ uv run python scripts/smoke_test.py
 
 # 2. Полный тестовый пакет архитектурных контрактов (8/8 тестов):
 uv run pytest tests/test_jarvis_core.py -v
+
+# 3. Ручная проверка текстового провайдера Cerebras (реальный system-промпт DONNA):
+uv run python scripts/cerebras_check.py --with-tools
 ```
+
+---
+
+## 🧠 Cerebras — второй текстовый LLM-провайдер
+
+**Что:** асинхронный клиент [`shared/llm/cerebras_client.py`](shared/llm/cerebras_client.py) к OpenAI-совместимому API `https://api.cerebras.ai/v1` (без стриминга).
+**Зачем:** тесты и фоновые текстовые задачи (суммаризация в Research Agent, разбор логов в Sentinel) с большим запасом квоты.
+
+* Ключ: `CEREBRAS_API_KEY` (env, приоритет) или `cerebras_api_key` в `config/api_keys.json`. См. `.env.example`.
+* Модели (параметр `model`): по умолчанию `qwen-3.8-27b` (450 req/min, ~1.08 млрд ток./день); `gpt-oss-120b` — только для ручных тестов (5 req/min).
+* Ошибки: `CerebrasRateLimitError` (429, с `retry_after`), `CerebrasAuthError` (нет ключа / 401 / 403), `CerebrasError` (прочее). Логируются и отправляются в Sentinel; не глотаются.
+* Ротации/фолбэка между провайдерами **нет** (следующий шаг).
+* **Не затронуто:** Gemini Live в `brain_orchestrator`, `audio_stream_service`, `windows_host_agent` — голосовой канал работает только на Gemini.

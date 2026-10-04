@@ -135,8 +135,16 @@ class BrainOrchestrator:
         # next open_app call so the chosen browser is saved as default.
         self._pending_browser_disambiguation = False
         self._should_sleep_after_turn = False
+        self._user_speaking = False
+
+    def extend_listening(self, duration: float = 15.0, reason: str = ""):
+        """Pushes active window forward so Donna doesn't cut off user while speaking."""
+        target = time.monotonic() + duration
+        if target > self._active_until:
+            self._active_until = target
 
     def wake_up(self, duration: float = 15.0, reason: str = ""):
+        self._user_speaking = False
         self._active_until = time.monotonic() + duration
         self.set_state("LISTENING")
         print(f"[Brain] 🟢 Woke up ({reason or 'active'}). Listening for {duration}s...")
@@ -147,6 +155,7 @@ class BrainOrchestrator:
             )
 
     def go_to_sleep(self):
+        self._user_speaking = False
         self._active_until = 0.0
         self.set_state("STANDBY")
         print("[Brain] 💤 Returning to STANDBY mode.")
@@ -456,8 +465,11 @@ class BrainOrchestrator:
                                         txt = sc.input_transcription.text
                                         if txt:
                                             in_buf.append(txt)
+                                            self._user_speaking = True
+                                            self.extend_listening(duration=15.0, reason="User speaking transcription")
 
                                     if sc.turn_complete:
+                                        self._user_speaking = False
                                         if self._turn_done_event:
                                             self._turn_done_event.set()
 
@@ -507,6 +519,8 @@ class BrainOrchestrator:
                     async def inactivity_watchdog():
                         while True:
                             await asyncio.sleep(1.0)
+                            if getattr(self, "_user_speaking", False):
+                                continue
                             if self.state == "LISTENING" and self._active_until > 0 and time.monotonic() > self._active_until:
                                 self.go_to_sleep()
 
@@ -747,7 +761,16 @@ async def ws_audio(websocket: WebSocket):
                 if b64:
                     chunk = base64.b64decode(b64)
                     await brain._in_audio_queue.put(chunk)
-                    print(f"[Brain][DEBUG] Received audio chunk, queue size={brain._in_audio_queue.qsize()}")
+                    if brain.state == "LISTENING" and len(chunk) >= 512:
+                        try:
+                            import numpy as np
+                            samples = np.frombuffer(chunk, dtype=np.int16)
+                            rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
+                            if rms > 380.0:  # Speech energy threshold
+                                brain._user_speaking = True
+                                brain.extend_listening(duration=15.0, reason="Voice Energy")
+                        except Exception:
+                            pass
     except WebSocketDisconnect:
         print("[Brain] Audio Stream Service disconnected.")
         brain.audio_client = None

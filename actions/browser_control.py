@@ -1051,7 +1051,7 @@ def browser_control(
     # kullanıcının kendisi açmış gibi. about:blank'li kontrollü pencere burada
     # asla açılmaz. Tek istisna: hâlihazırda süren bir otomasyon akışı varsa
     # gezinme o pencerede devam eder (çok adımlı görevler bölünmesin diye).
-    if action in ("go_to", "search", "new_tab"):
+    if action in ("go_to", "search", "new_tab", "open", "navigate"):
         if _registry.has(browser):
             sess = _registry.get(browser)
             try:

@@ -40,6 +40,8 @@ dependencies = [
     "pywinauto; sys_platform == 'win32'",
     "pywin32; sys_platform == 'win32'",
     "ddgs>=9.16.0",
+    "httpx",
+    "pysocks>=1.7.1",
 ]
 
 [dependency-groups]
